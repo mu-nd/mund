@@ -1,0 +1,29 @@
+{
+  "format": "muND/facilities/1",
+  "facilities": [
+    {"abbr": "J-PARC (D1)", "facility": "J-PARC", "detail": "J-PARC MLF MUSE D1"},
+    {"abbr": "J-PARC (D2)", "facility": "J-PARC", "detail": "J-PARC MLF MUSE D2"},
+    {"abbr": "J-PARC (H1)", "facility": "J-PARC", "detail": "J-PARC MLF MUSE H1"},
+    {"abbr": "RAL (Port-1)", "facility": "RAL", "detail": "RAL-ISIS RIKEN-RAL Port-1"},
+    {"abbr": "RAL (Port-2)", "facility": "RAL", "detail": "RAL-ISIS RIKEN-RAL Port-2"},
+    {"abbr": "RAL (Port-3)", "facility": "RAL", "detail": "RAL-ISIS RIKEN-RAL Port-3"},
+    {"abbr": "RAL (Port-4)", "facility": "RAL", "detail": "RAL-ISIS RIKEN-RAL Port-4"},
+    {"abbr": "MuSIC-M1", "facility": "RCNP", "detail": "RCNP MuSIC M1"},
+    {"abbr": "TRIUMF (M20)", "facility": "TRIUMF", "detail": "TRIUMF M20"},
+    {"abbr": "TRIUMF (M9B)", "facility": "TRIUMF", "detail": "TRIUMF M9B"},
+    {"abbr": "TRIUMF (M9H)", "facility": "TRIUMF", "detail": "TRIUMF M9H"},
+    {"abbr": "PSI (piE1)", "facility": "PSI", "detail": "PSI (SIN) SmuS piE1"},
+    {"abbr": "PSI (muE4)", "facility": "PSI", "detail": "PSI (SIN) SmuS muE4"},
+    {"abbr": "CERN SC", "facility": "CERN", "detail": "CERN Synchrocyclotron"},
+    {"abbr": "Chicago SC", "facility": "Chicago", "detail": "Chicago Synchrocyclotron"},
+    {"abbr": "SREL SC", "facility": "SREL", "detail": "Space Radiation Effects Laboratory"},
+    {"abbr": "Nevis SC", "facility": "Columbia", "detail": "Columbia University Nevis Synchrocyclotron"},
+    {"abbr": "CIT SC", "facility": "Carnegie", "detail": "Carnegie Institute of Technology Synchrocyclotron"},
+    {"abbr": "LAMPF", "facility": "LAMPF", "detail": "Los Alamos Meson Physics Facility"},
+    {"abbr": "MIT-LNS", "facility": "LNS", "detail": "MIT Laboratory for Nuclear Science"},
+    {"abbr": "JINR SC", "facility": "Dubna", "detail": "JINR Laboratory of Nuclear Problems"},
+    {"abbr": "Liverpool SC", "facility": "Liverpool", "detail": "Liverpool Synchrocyclotron"},
+    {"abbr": "Cosmic", "facility": "Cosmic", "detail": "Cosmic rays"},
+    {"abbr": "Unknown", "facility": "Unknown", "detail": "Facility unknown"}
+  ]
+}

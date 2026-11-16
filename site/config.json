@@ -1,0 +1,9 @@
+{
+  "repository": "niikura-muon/mund",
+  "branch": "main",
+  "project_url": "https://ribf.riken.jp/muon/",
+  "paper": {
+    "text": "Y. Watanabe et al., “Muon Nuclear Data Development Project”, arXiv:2605.15539 (2026)",
+    "url": "https://arxiv.org/abs/2605.15539"
+  }
+}

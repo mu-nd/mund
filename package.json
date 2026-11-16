@@ -1,0 +1,9 @@
+{
+  "name": "mund",
+  "private": true,
+  "description": "Muon Nuclear Data (muND). This file only tells Node that the .js files are ES modules; there are no dependencies to install.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/js/run-node.mjs"
+  }
+}

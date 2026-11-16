@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muND explorer – Muon Nuclear Data</title>
+<meta name="description" content="Explorer of the Muon Nuclear Data (μND) library: lifetimes of muonic atoms and nuclear capture rates, with experimental, curated and evaluated data.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/explorer.css">
+<link rel="modulepreload" href="assets/js/explorer/main.js">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="./"><strong>μND</strong><span>Muon Nuclear Data</span></a>
+    <nav class="site-nav" id="nav" aria-label="Pages"></nav>
+    <span class="spacer"></span>
+    <div id="version" class="version-box"></div>
+  </div>
+</header>
+<main class="page" id="main">
+  <p class="muted" id="loading">Loading the data …</p>
+  <noscript><p class="notice warn">The explorer needs JavaScript. The data themselves are plain files:
+    see <a href="data/latest/manifest.json">data/latest/manifest.json</a>.</p></noscript>
+</main>
+<footer class="site-footer"><div class="bar" id="footer"></div></footer>
+<script type="module" src="assets/js/explorer/main.js"></script>
+</body>
+</html>

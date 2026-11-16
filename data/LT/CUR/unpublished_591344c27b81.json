@@ -1,0 +1,20 @@
+{
+  "format": "muND/LT/1",
+  "sublibrary": "LT",
+  "datasetType": "curated",
+  "meta": {
+    "id": "591344c27b81",
+    "bibId": "10.1000/unpublished",
+    "comment": "Compilation and curation are work in progress"
+  },
+  "data": [
+    {"datasetId": "f02832f1580f", "nuclide": {"element": "Mg", "mass": 0, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.4858, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0018}]}}, "originalData": ["5fb28c42563b"], "legacyIds": ["4f888682a401"]},
+    {"datasetId": "18d9d393dfc6", "nuclide": {"element": "Al", "mass": 27, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.7061, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0013}]}}, "comment": "Weighted average of two data", "originalData": ["343adc036597", "3976d87eadb1"], "legacyIds": ["935cd42f14bd"]},
+    {"datasetId": "6730248ef6ac", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.8926, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0090}]}}, "originalData": ["e2551c5951a7"], "legacyIds": ["ef8409832d42"]},
+    {"datasetId": "3732db338eed", "nuclide": {"element": "Si", "mass": 29, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.8074, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0056}]}}, "originalData": ["735e0e78bc31"], "legacyIds": ["d80333ff804c"]},
+    {"datasetId": "23eef292573a", "nuclide": {"element": "Si", "mass": 30, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.7124, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0037}]}}, "originalData": ["3fc99c56a5ad"], "legacyIds": ["47683730da2d"]},
+    {"datasetId": "a75ab84c246a", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 0.8792, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.0017}]}}, "comment": "Weighted average of two data", "originalData": ["4abe86ca167b", "33f450850ea3"], "legacyIds": ["008f30bad2a5"]},
+    {"datasetId": "29de03480980", "nuclide": {"element": "Mn", "mass": 55, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 3.899, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.085}]}}, "originalData": ["fecc9e6ba056"], "legacyIds": ["17ee57fe1d9e"]},
+    {"datasetId": "e8ba8de13ccf", "nuclide": {"element": "Ag", "mass": 0, "isomer": 0}, "observable": {"kind": "capture_rate", "capture_rate": {"value": 11.075, "unit": "us-1", "uncertainties": [{"source": "total", "value": 0.066}]}}, "originalData": ["83dbd82cd84e"], "legacyIds": ["4fbcd4f279e5"]}
+  ]
+}

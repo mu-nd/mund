@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    { "fileMatch": ["/data/LT/**/*.json"], "url": "./schema/v1/lt.schema.json" },
+    { "fileMatch": ["/data/master/facilities.json"], "url": "./schema/v1/facilities.schema.json" }
+  ],
+  "files.insertFinalNewline": true,
+  "[json]": { "editor.formatOnSave": false }
+}

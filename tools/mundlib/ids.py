@@ -1,0 +1,85 @@
+"""Deterministic identifiers (MetaID / DataID).
+
+Definition (see ``docs/id-definition.md``).  The rule is a pure string
+definition and does not depend on this implementation:
+
+    MetaID = first 12 hex digits of SHA-256( UTF-8( meta_source ) )
+    DataID = first 12 hex digits of SHA-256( UTF-8( data_source ) )
+
+    meta_source = "LT|{DataSet}-META|{doi_norm}[|{key_norm}]"
+    data_source = "LT|{DataSet}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
+
+``[...]`` marks a part that is appended only when a key is given.  Values and
+uncertainties are deliberately *not* part of the identifier, so correcting a
+number does not change the ID.
+
+The rule is confirmed for the LT sub-library only.  The ``sublibrary`` argument
+exists so that the same code can be reused once the other sub-libraries have a
+confirmed definition.
+"""
+from __future__ import annotations
+
+import hashlib
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from typing import Optional
+
+ID_LENGTH = 12
+SEPARATOR = "|"
+
+
+def _hash12(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()[:ID_LENGTH]
+
+
+def normalize_doi(doi: str) -> str:
+    """First entry of a ``;`` separated list, stripped, upper-cased."""
+    return str(doi).split(";")[0].strip().upper()
+
+
+def normalize_key(key: Optional[str]) -> str:
+    """Stripped and upper-cased.  Empty string when no key is given."""
+    if key is None:
+        return ""
+    return str(key).strip().upper()
+
+
+def normalize_element(element: str) -> str:
+    """Standard element symbol: one upper-case letter + optional lower-case."""
+    s = str(element).strip()
+    return s[:1].upper() + s[1:].lower()
+
+
+def normalize_mass(mass) -> str:
+    """Decimal string of ``mass x 1000`` (0 = natural abundance -> ``"0"``)."""
+    try:
+        lex = getattr(mass, "lex", None)
+        d = Decimal(lex if lex is not None else str(mass))
+    except InvalidOperation as exc:
+        raise ValueError("mass is not a number: %r" % (mass,)) from exc
+    return str(int((d * 1000).to_integral_value(rounding=ROUND_HALF_UP)))
+
+
+def meta_source(sublibrary: str, dataset: str, doi: str, key: Optional[str] = None) -> str:
+    parts = [sublibrary, dataset + "-META", normalize_doi(doi)]
+    k = normalize_key(key)
+    if k:
+        parts.append(k)
+    return SEPARATOR.join(parts)
+
+
+def data_source(sublibrary: str, dataset: str, element: str, mass, meta_id: str,
+                key: Optional[str] = None) -> str:
+    parts = [sublibrary, dataset, normalize_element(element), normalize_mass(mass), meta_id]
+    k = normalize_key(key)
+    if k:
+        parts.append(k)
+    return SEPARATOR.join(parts)
+
+
+def meta_id(sublibrary: str, dataset: str, doi: str, key: Optional[str] = None) -> str:
+    return _hash12(meta_source(sublibrary, dataset, doi, key))
+
+
+def data_id(sublibrary: str, dataset: str, element: str, mass, meta_id: str,
+            key: Optional[str] = None) -> str:
+    return _hash12(data_source(sublibrary, dataset, element, mass, meta_id, key))

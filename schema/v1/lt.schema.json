@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://niikura-muon.github.io/mund/schema/v1/lt.schema.json",
+  "title": "muND LT dataset file",
+  "description": "One file of the LT sub-library (lifetimes of muonic atoms / nuclear capture rates; called NCR in earlier documents). A file holds one metadata record - one publication, optionally split by a key - and all data entries that refer to it. The member names datasetId, datasetType, nuclide, observable, uncertainties and bibId follow the JSON Schema drafted for muND by S. Kawase (github.com/shkawase/mund). The order of the properties below is the canonical key order of the files.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/LT/1", "description": "Format identifier of this file."},
+    "sublibrary": {"const": "LT", "description": "Sub-library: XR, LT, ES or BR. This schema covers LT."},
+    "datasetType": {
+      "enum": ["experiment", "theory", "curated", "evaluated"],
+      "description": "experiment: data as published (directory EXP). theory: theoretical calculation (TH). curated: experimental data re-analysed on a common footing, traced back to experiment (CUR). evaluated: recommended data (EVAL)."
+    },
+    "meta": {"$ref": "#/$defs/meta"},
+    "data": {
+      "type": "array",
+      "description": "Data entries. One entry per line in the file.",
+      "items": {"$ref": "#/$defs/dataset"}
+    }
+  },
+  "required": ["format", "sublibrary", "datasetType", "meta", "data"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"datasetType": {"const": "experiment"}}, "required": ["datasetType"]},
+      "then": {
+        "properties": {
+          "meta": {"required": ["facility"]},
+          "data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/notAllowed"}}}}
+        }
+      },
+      "else": {
+        "properties": {
+          "meta": {
+            "properties": {
+              "facility": {"$ref": "#/$defs/notAllowed"},
+              "beam": {"$ref": "#/$defs/notAllowed"},
+              "target": {"$ref": "#/$defs/notAllowed"},
+              "detector": {"$ref": "#/$defs/notAllowed"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"datasetType": {"const": "curated"}}, "required": ["datasetType"]},
+      "then": {"properties": {"data": {"items": {"required": ["originalData"]}}}}
+    },
+    {
+      "if": {"properties": {"datasetType": {"const": "theory"}}, "required": ["datasetType"]},
+      "then": {"properties": {"data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/notAllowed"}}}}}}
+    },
+    {
+      "if": {"properties": {"datasetType": {"const": "evaluated"}}, "required": ["datasetType"]},
+      "else": {"properties": {"meta": {"properties": {"referenceDatabase": {"$ref": "#/$defs/notAllowed"}}}}}
+    }
+  ],
+  "$defs": {
+    "notAllowed": {"not": {}, "description": "This member is not allowed for this dataset type."},
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$",
+      "description": "12 hexadecimal digits (see docs/id-definition.md)."
+    },
+    "doi": {
+      "type": "string",
+      "pattern": "^10\\.[0-9]{4,9}/[^\\s;]+$",
+      "description": "A DOI without the https://doi.org/ prefix. Sources without a DOI use a placeholder 10.1000/mund.<name>."
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[^\\s|]([^|]*[^\\s|])?$",
+      "description": "Short label that distinguishes entries which would otherwise get the same ID. Compared case-insensitively. Must not contain '|'."
+    },
+    "text": {"type": "string", "minLength": 1},
+    "meta": {
+      "type": "object",
+      "description": "Metadata record: the source and how the data were obtained. Bibliographic details are kept in data/master/bibliography.json and found through bibId.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id",
+          "description": "MetaID, derived from datasetType, bibId and key. Data entries refer to their metadata by this identifier."
+        },
+        "bibId": {"$ref": "#/$defs/doi", "description": "Main reference: its DOI. Part of the MetaID."},
+        "key": {
+          "$ref": "#/$defs/key",
+          "description": "Optional. Separates several metadata records of the same publication (e.g. two different set-ups). Part of the MetaID."
+        },
+        "relatedBibIds": {
+          "type": "array",
+          "description": "Other identifiers of the same work: arXiv version, erratum, data repository ...",
+          "items": {"$ref": "#/$defs/doi"},
+          "uniqueItems": true
+        },
+        "facility": {
+          "$ref": "#/$defs/text",
+          "description": "experiment only. Short name of the facility as listed in data/master/facilities.json (e.g. 'J-PARC (D1)')."
+        },
+        "method": {
+          "$ref": "#/$defs/text",
+          "description": "experiment: what was detected (electron, gamma, neutron, charged particle, fission fragment). theory: model or code. curated / evaluated: procedure."
+        },
+        "beam": {"$ref": "#/$defs/text", "description": "experiment only. Beam conditions (free text)."},
+        "target": {
+          "$ref": "#/$defs/text",
+          "description": "experiment only. Target: size, gas / liquid / solid, chemical form, enrichment ... (free text)."
+        },
+        "detector": {"$ref": "#/$defs/text", "description": "experiment only. Detector set-up (free text)."},
+        "referenceDatabase": {
+          "$ref": "#/$defs/text",
+          "description": "evaluated only. The set of curated data the evaluation is based on (e.g. a version of the curated library)."
+        },
+        "comment": {
+          "$ref": "#/$defs/text",
+          "description": "Any other remark, e.g. corrections applied, reference data used."
+        }
+      },
+      "required": ["id", "bibId"],
+      "additionalProperties": false
+    },
+    "dataset": {
+      "type": "object",
+      "description": "One data entry: one quantity of one nuclide.",
+      "properties": {
+        "datasetId": {
+          "$ref": "#/$defs/id",
+          "description": "DataID, derived from datasetType, element, mass, MetaID and key."
+        },
+        "nuclide": {"$ref": "#/$defs/nuclide"},
+        "observable": {"$ref": "#/$defs/observable"},
+        "key": {
+          "$ref": "#/$defs/key",
+          "description": "Optional. Separates entries of the same nuclide within one metadata record (e.g. two target forms). Part of the DataID."
+        },
+        "comment": {"$ref": "#/$defs/text"},
+        "originalData": {
+          "type": "array",
+          "description": "curated (required) / evaluated (optional): datasetIds this value was derived from.",
+          "items": {"$ref": "#/$defs/id"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "legacyIds": {
+          "type": "array",
+          "description": "Identifiers this entry had in earlier systems.",
+          "items": {"$ref": "#/$defs/text"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["datasetId", "nuclide", "observable"],
+      "additionalProperties": false
+    },
+    "nuclide": {
+      "type": "object",
+      "properties": {
+        "element": {"$ref": "#/$defs/element"},
+        "mass": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300,
+          "description": "Mass number A. 0 means a target of natural isotopic abundance."
+        },
+        "isomer": {"type": "integer", "minimum": 0, "description": "0 = ground state, 1 = first isomeric state ..."}
+      },
+      "required": ["element", "mass", "isomer"],
+      "additionalProperties": false
+    },
+    "observable": {
+      "type": "object",
+      "description": "The measured or calculated quantity. 'kind' names it; the member of the same name holds value, unit and uncertainties. experiment entries keep the quantity given in the source (the one closest to the original); curated and evaluated entries use capture_rate.",
+      "properties": {
+        "kind": {
+          "enum": ["lifetime", "capture_rate", "capture_probability"],
+          "description": "lifetime: total lifetime of the muonic atom. capture_rate: total nuclear capture rate. capture_probability: fraction of muons captured by the nucleus."
+        },
+        "lifetime": {"$ref": "#/$defs/quantity"},
+        "capture_rate": {"$ref": "#/$defs/quantity"},
+        "capture_probability": {"$ref": "#/$defs/quantity"}
+      },
+      "required": ["kind"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "lifetime"}}, "required": ["kind"]},
+          "then": {
+            "required": ["lifetime"],
+            "properties": {
+              "lifetime": {"properties": {"unit": {"enum": ["ns", "us"]}, "value": {"exclusiveMinimum": 0}}},
+              "capture_rate": {"$ref": "#/$defs/notAllowed"},
+              "capture_probability": {"$ref": "#/$defs/notAllowed"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "capture_rate"}}, "required": ["kind"]},
+          "then": {
+            "required": ["capture_rate"],
+            "properties": {
+              "capture_rate": {"properties": {"unit": {"enum": ["us-1", "ms-1", "s-1"]}}},
+              "lifetime": {"$ref": "#/$defs/notAllowed"},
+              "capture_probability": {"$ref": "#/$defs/notAllowed"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "capture_probability"}}, "required": ["kind"]},
+          "then": {
+            "required": ["capture_probability"],
+            "properties": {
+              "capture_probability": {"properties": {"unit": {"enum": ["%"]}, "value": {"minimum": 0, "maximum": 100}}},
+              "lifetime": {"$ref": "#/$defs/notAllowed"},
+              "capture_rate": {"$ref": "#/$defs/notAllowed"}
+            }
+          }
+        }
+      ]
+    },
+    "quantity": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "description": "Value as given in the source, written with the same number of digits."
+        },
+        "unit": {
+          "enum": ["ns", "us", "us-1", "ms-1", "s-1", "%"],
+          "description": "ASCII units: us = microsecond, us-1 = per microsecond."
+        },
+        "uncertainties": {
+          "type": "array",
+          "description": "Uncertainties (one standard deviation, symmetric) as given in the source, statistical and systematic separately when the source separates them. A single overall uncertainty has source 'total'. Empty when the source gives none.",
+          "items": {"$ref": "#/$defs/uncertainty"}
+        },
+        "huffFactor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional. Huff factor the source used to convert between lifetime and capture rate (information only)."
+        }
+      },
+      "required": ["value", "unit", "uncertainties"],
+      "additionalProperties": false
+    },
+    "uncertainty": {
+      "type": "object",
+      "properties": {
+        "source": {"enum": ["total", "statistical", "systematic", "other"]},
+        "value": {"type": "number", "minimum": 0},
+        "description": {"$ref": "#/$defs/text"}
+      },
+      "required": ["source", "value"],
+      "additionalProperties": false
+    },
+    "element": {
+      "description": "Element symbol.",
+      "enum": ["H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"]
+    }
+  }
+}

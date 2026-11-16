@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://niikura-muon.github.io/mund/schema/v1/bibliography.schema.json",
+  "title": "muND bibliography",
+  "description": "Bibliographic data of the references, found through their DOI (bibId). Entries are a cached subset of the Crossref record of the DOI and use Crossref's member names; a source without DOI gets a hand-made entry of the same shape under its placeholder DOI.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/bibliography/1"},
+    "references": {
+      "type": "array",
+      "description": "One reference per line.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "DOI": {"type": "string", "pattern": "^10\\.[0-9]{4,9}/[^\\s;]+$"},
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Crossref type, e.g. journal-article, report, dissertation."
+          },
+          "author": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "family": {"type": "string", "minLength": 1},
+                "given": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1, "description": "For a collaboration or an organisation."}
+              },
+              "additionalProperties": false
+            }
+          },
+          "title": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "container-title": {
+            "type": "array",
+            "description": "Journal, proceedings or report series.",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "short-container-title": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "volume": {"type": "string", "minLength": 1},
+          "issue": {"type": "string", "minLength": 1},
+          "page": {"type": "string", "minLength": 1},
+          "article-number": {"type": "string", "minLength": 1},
+          "published": {
+            "type": "object",
+            "properties": {
+              "date-parts": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "array", "minItems": 1, "items": {"type": "integer"}}
+              }
+            },
+            "required": ["date-parts"],
+            "additionalProperties": false
+          },
+          "publisher": {"type": "string", "minLength": 1},
+          "URL": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where to find the source when the DOI is a placeholder."
+          }
+        },
+        "required": ["DOI"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["format", "references"],
+  "additionalProperties": false
+}

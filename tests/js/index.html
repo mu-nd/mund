@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>muND self-test</title>
+<link rel="stylesheet" href="../assets/css/base.css">
+<style>
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  li { margin: 4px 0; }
+  .pass { color: var(--good); } .fail { color: var(--bad); }
+  pre { white-space: pre-wrap; background: var(--surface-2); padding: 8px 12px; border-radius: 6px; font-size: 12px; }
+  ul { list-style: none; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>muND self-test</h1>
+  <p>Checks, in this browser, that the code of this site computes identifiers, formats files, validates data
+     and converts quantities exactly as the reference tools of the repository do.</p>
+  <p id="summary" role="status">Running ...</p>
+  <ul id="results"></ul>
+</main>
+<script type="module">
+import { Harness } from './harness.js';
+import { register } from './suite.js';
+import { core } from './core.js';
+
+const cache = new Map();
+async function fetchText(url) {
+  if (!cache.has(url)) {
+    cache.set(url, fetch(url, { cache: 'no-store' }).then((r) => {
+      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+      return r.text();
+    }));
+  }
+  return cache.get(url);
+}
+const base = { vectors: './vectors/', schema: '../schema/v1/', master: '../data/latest/raw/master/' };
+const env = {
+  text: (kind, name) => fetchText(base[kind] + name),
+  fakeGitHub: () => import('./fake-github.js'),
+  async dataFiles() {
+    const manifest = JSON.parse(await fetchText('../data/latest/manifest.json'));
+    const raw = manifest.files.filter((f) => f.path.startsWith('raw/'));
+    return Promise.all(raw.map(async (f) => ({
+      path: 'data/' + f.path.slice(4), text: await fetchText('../data/latest/' + f.path),
+    })));
+  },
+};
+
+const h = new Harness();
+register(h, core, env);
+const list = document.getElementById('results');
+const results = await h.run((r) => {
+  const li = document.createElement('li');
+  li.className = r.ok ? 'pass' : 'fail';
+  li.textContent = `${r.ok ? '✓' : '✗'} ${r.name} (${r.checks} checks)`;
+  if (!r.ok) {
+    const pre = document.createElement('pre');
+    pre.textContent = r.error;
+    li.appendChild(pre);
+  }
+  list.appendChild(li);
+});
+const failed = results.filter((r) => !r.ok).length;
+const checks = results.reduce((n, r) => n + r.checks, 0);
+const summary = document.getElementById('summary');
+summary.textContent = failed
+  ? `${failed} of ${results.length} tests FAILED`
+  : `All ${results.length} tests passed (${checks} checks).`;
+summary.className = failed ? 'fail' : 'pass';
+document.title = `${failed ? 'FAIL' : 'PASS'} - muND self-test`;
+window.__mundTestResults = { failed, total: results.length, checks, results };
+</script>
+</body>
+</html>

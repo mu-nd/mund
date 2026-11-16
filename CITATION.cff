@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: "muND: Muon Nuclear Data"
+message: >-
+  If you use these data, please cite the version of the data you used and the
+  project paper given below. Individual values should be cited with their
+  original reference, which is stored with every data point.
+type: dataset
+authors:
+  - name: "muND Project Team"
+repository-code: "https://github.com/niikura-muon/mund"
+url: "https://ribf.riken.jp/muon/"
+preferred-citation:
+  type: article
+  title: "Muon Nuclear Data Development Project"
+  authors:
+    - {family-names: Watanabe, given-names: Yukinobu}
+    - {family-names: Niikura, given-names: Megumi}
+    - {family-names: Abe, given-names: Shinichiro}
+    - {family-names: Biswas, given-names: Sayani}
+    - {family-names: Iwamoto, given-names: Hiroki}
+    - {family-names: Hillier, given-names: Adrian}
+    - {family-names: Kawamura, given-names: Naritoshi}
+    - {family-names: Kawase, given-names: Shoichiro}
+    - {family-names: Matsuzaki, given-names: Teiichiro}
+    - {family-names: Minato, given-names: Futoshi}
+    - {family-names: Mizuno, given-names: Rurie}
+    - {family-names: Tomono, given-names: Dai}
+    - {family-names: Yamaguchi, given-names: Yuji}
+  year: 2026
+  url: "https://arxiv.org/abs/2605.15539"
+  identifiers:
+    - type: other
+      value: "arXiv:2605.15539"
+      description: arXiv preprint
