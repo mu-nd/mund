@@ -1,13 +1,27 @@
-/* muND explorer */
+/* muND - the pages of the site: home, explorer, downloads, documents, converter */
 
 .view { display: flex; flex-direction: column; gap: 16px; }
-.version-box select { min-height: 32px; width: auto; padding: 4px 8px; font-size: 0.9rem; }
+/* the header, as on the project site: the name on the left, the menu on the right,
+   the chosen page in blue; a shadow only once the page is scrolled (main.js) */
+.site-header { box-shadow: none; transition: box-shadow 0.3s; }
+body.scrolled .site-header { box-shadow: var(--header-shadow); }
+.site-header .bar { padding-top: 16px; padding-bottom: 16px; }
+.site-header .brand { font-size: 1.65rem; font-weight: 700; line-height: 1.2; }
+.site-nav { margin-left: auto; justify-content: flex-end; }
+.site-nav a { padding: 8px 14px; border-radius: 0; background: none; color: var(--ink); font-size: 1.05rem; font-weight: 500; }
+.site-nav a:hover, .site-nav a[aria-current="page"] { background: none; color: var(--accent); font-weight: 500; }
+@media (max-width: 640px) {
+  .site-header .bar { padding-top: 12px; padding-bottom: 8px; }
+  .site-header .brand { font-size: 1.3rem; }
+  .site-nav { gap: 0; }
+  .site-nav a { padding: 6px 7px; font-size: 0.95rem; }
+}
+@media (max-width: 360px) { .site-nav a { padding: 6px 5px; font-size: 0.88rem; } }
 
-/* ---- filters ---------------------------------------------------------- */
-.filters { display: flex; flex-wrap: wrap; gap: 12px 28px; padding: 12px 16px; align-items: flex-end; }
-.filter { display: flex; flex-direction: column; gap: 5px; }
-.filter-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
-.filter select { width: auto; min-width: 110px; }
+/* the version of the data, at the top of the pages that show data */
+.version-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 14px; font-size: 0.9rem; }
+.version-bar select { width: auto; max-width: 100%; min-height: 32px; padding: 4px 8px; font-size: 0.9rem; }
+.card-head .version-bar, .heading-row .version-bar { margin: 0; }
 
 /* ---- periodic table + chart --------------------------------------------- */
 .explorer-top { display: grid; grid-template-columns: minmax(0, 13fr) minmax(0, 12fr); gap: 16px; align-items: start; }
@@ -20,15 +34,15 @@
 }
 .pt-cell {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  aspect-ratio: 1 / 1.08; min-width: 0;
+  aspect-ratio: 1; min-width: 0; min-height: 0;    /* square at every width: the content never makes it taller */
   border: 1px solid var(--border); border-radius: 4px;
   background: var(--surface); color: var(--ink-3); text-decoration: none; line-height: 1;
 }
-.pt-cell.has-data { color: var(--heading); border-color: var(--border-strong); background: var(--surface-2); }
+.pt-cell.has-data { color: var(--heading); border-color: color-mix(in srgb, var(--heading) 70%, transparent); }
 .pt-cell:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); z-index: 1; }
-.pt-cell.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.pt-cell.selected, .pt-cell.selected:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .pt-z { position: absolute; top: 1px; left: 2px; font-size: 8px; opacity: 0.75; font-variant-numeric: tabular-nums; }
-.pt-sym { font-weight: 700; font-size: clamp(9px, 1.05vw, 13px); }
+.pt-sym { font-weight: 700; font-size: clamp(9px, 1.05vw, 13px); white-space: nowrap; }
 .pt-marks { position: absolute; bottom: 2px; display: flex; gap: 1.5px; height: 4px; }
 .pt-mark { width: 4px; height: 4px; border-radius: 50%; display: block; }
 .pt-mark.EXP { background: var(--ds-exp); }
@@ -36,13 +50,16 @@
 .pt-mark.CUR { background: var(--ds-cur); border-radius: 1px; }
 .pt-mark.EVAL { background: var(--ds-eval); border-radius: 0; transform: rotate(45deg) scale(0.85); }
 .pt-cell.selected .pt-mark { background: var(--accent-ink); }
+/* the key: a switch (pill) for each kind of data; switched off, its mark fades as in the table */
 .ptable-key { margin: 10px 0 0; }
-.ptable-key .ds-dot { vertical-align: baseline; }
+.ptable-key .pill[aria-pressed="false"] .ds-dot { opacity: 0.3; }
 @media (max-width: 640px) {
   .pt-z, .pt-marks { display: none; }
   .pt-sym { font-size: 9px; }
   .ptable { gap: 1px; }
   .ptable-card .card-body { padding: 10px 8px; }
+  .ptable-key { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }    /* two by two, of one width */
+  .ptable-key .pill { justify-content: center; }
 }
 
 /* ---- chart ---------------------------------------------------------------- */
@@ -70,14 +87,14 @@
 .tip-value { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .tip-name { color: var(--ink-2); }
 .tip-ref { font-size: 0.8rem; }
+.tip-kind { font-weight: 400; color: var(--ink-3); font-size: 0.8rem; }
 
 /* ---- element heading and tables ------------------------------------------------ */
-.element-heading h1 { margin: 6px 0 2px; display: flex; align-items: center; gap: 12px; }
+.heading-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 6px 0 4px; }
+.heading-row select { width: auto; }
 .element-heading p { margin: 0; font-size: 0.9rem; }
-.element-symbol {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; padding: 0 8px;
-  border-radius: 8px; background: var(--heading); color: var(--surface); font-size: 1.3rem;
-}
+.download-error { color: var(--bad); }
+.tag.changed { background: var(--warn-soft); color: var(--warn); }
 .card-head h2 .ds-dot { margin-right: 2px; }
 td.measured { font-weight: 600; }
 .star { color: var(--warn); font-size: 0.8em; }
@@ -96,13 +113,20 @@ tr.emph td { font-weight: 700; }
 }
 .detail-head h2 { margin: 0; }
 .detail-body { padding: 4px 16px 32px; overflow-y: auto; overscroll-behavior: contain; }
-.detail-body h3 {
+.detail-body > h3 {
   margin: 20px 0 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3);
 }
 .detail-body dl.kv { grid-template-columns: 128px 1fr; font-size: 0.92rem; }
 .detail-body details { margin-top: 20px; }
 .detail-body summary { cursor: pointer; color: var(--ink-2); font-weight: 600; margin-bottom: 8px; }
 .id-list { margin: 0; padding-left: 18px; font-size: 0.92rem; }
+.id-list li + li { margin-top: 4px; }
+/* an original that changed after the value was derived from it */
+.id-list .changed {
+  display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 3px;
+  background: var(--warn-soft); color: var(--warn); font-size: 0.85rem; font-weight: 600;
+}
+.changed-notice { margin: 0 0 8px; font-size: 0.88rem; }
 @media (min-width: 1500px) {
   body.has-detail main.page, body.has-detail .site-header .bar, body.has-detail .site-footer .bar {
     margin-right: 496px; margin-left: auto;
@@ -110,7 +134,6 @@ tr.emph td { font-weight: 700; }
 }
 
 /* ---- text pages -------------------------------------------------------------------- */
-.prose { max-width: 76ch; }
 .prose ul { padding-left: 20px; margin: 0 0 0.9em; }
 .prose li { margin: 4px 0; }
 .formula { font-size: 1.1rem; padding: 4px 0 4px 20px; font-family: Georgia, "Times New Roman", serif; }
@@ -120,3 +143,74 @@ tr.emph td { font-weight: 700; }
 .form-grid label { display: block; margin-bottom: 4px; }
 label.check { display: flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
 label.check input { width: auto; min-height: 0; }
+
+/* home */
+
+/* citation boxes (Home, Downloads, an entry): one below the other; the style above a text that cannot be edited,
+   the copy button in its top right corner (as on code blocks on GitHub) */
+.cite-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 4px 0 14px; }
+.cite-wrap { position: relative; }
+.cite-copy {
+  position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.cite-copy:hover { background: var(--surface-2); color: var(--ink); }
+.cite-copy.copied { color: var(--good); border-color: var(--good); }
+.cite-copy svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+textarea.cite-text {
+  display: block; width: 100%; min-height: 44px; resize: none; padding: 8px 46px 8px 10px;    /* the text clear of the copy button */
+  border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--surface-2); color: var(--ink);
+  font-family: var(--font); font-size: 0.9rem; line-height: 1.55; cursor: text;    /* the font of the page */
+  overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere;    /* long lines wrap; no scroll bars */
+}
+
+.home-section, .cite-section { scroll-margin-top: 72px; }
+.home-section > h2, .cite-section > h2 { font-size: 1.4rem; margin: 18px 0 12px; }
+
+/* the four sub-libraries */
+.sublibraries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+@media (max-width: 860px) { .sublibraries { grid-template-columns: minmax(0, 1fr); } }
+.sublibraries .card-body p:last-child { margin-bottom: 0; }
+.sub-status { margin: 0 0 10px; }
+
+/* news (the colours of the kinds are those of the project site) */
+.news ul { margin: 0; padding: 0; list-style: none; }
+.news li { display: grid; grid-template-columns: 10em minmax(0, 1fr); gap: 4px 20px; padding: 16px; }
+.news li + li, .news-older ul { border-top: 1px solid var(--border); }
+.news-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.news time { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.news-kind { padding: 1px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: #fff; background: #5f6572; }
+.news-kind.publication { background: #334b80; }
+.news-kind.workshop { background: #216957; }
+.news h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.news p { margin: 0; }
+.news-older > summary { padding: 12px 16px; border-top: 1px solid var(--border); color: var(--accent); font-weight: 600; cursor: pointer; }
+.news-older[open] > summary { border-bottom: 0; }
+@media (max-width: 640px) {
+  .news li { grid-template-columns: minmax(0, 1fr); }
+  .news-meta { flex-direction: row; align-items: center; }
+}
+
+/* team */
+.team { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.team li { padding: 18px 20px; }
+.team h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.team p { margin: 0; color: var(--ink-2); font-size: 0.92rem; }
+
+/* documents (made from docs/*.md) */
+.doc h1 { margin-top: 4px; }
+.doc h2 { margin-top: 1.6em; padding-top: 0.2em; }
+.doc h3 { margin-top: 1.3em; }
+.doc h2, .doc h3 { scroll-margin-top: 72px; }
+.doc ul, .doc ol { padding-left: 22px; margin: 0 0 0.9em; }
+.doc li { margin: 4px 0; }
+.doc pre.code { max-height: none; margin: 0 0 1em; }
+.doc ol + pre.code { margin-left: 22px; }    /* a code block in the steps of a list */
+.doc .table-wrap { margin: 0 0 1em; }
+.doc table.data { font-size: 0.9rem; }
+.doc table.data td code { white-space: nowrap; }
+.doc :not(pre) > code { padding: 1px 4px; border-radius: 4px; background: var(--surface-2); }
+.doc-toc { margin: 0 0 1.2em; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: var(--radius-s); }
+.doc-toc ul { margin: 0; padding-left: 18px; columns: 2 220px; }
+.doc-source { margin-top: 2.4em; }

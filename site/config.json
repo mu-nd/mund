@@ -1,9 +1,32 @@
 {
-  "repository": "niikura-muon/mund",
+  "repository": "mu-nd/mund",
   "branch": "main",
-  "project_url": "https://ribf.riken.jp/muon/",
+  "siteUrl": "https://ribf.riken.jp/muon/",
   "paper": {
-    "text": "Y. Watanabe et al., “Muon Nuclear Data Development Project”, arXiv:2605.15539 (2026)",
-    "url": "https://arxiv.org/abs/2605.15539"
-  }
+    "url": "https://arxiv.org/abs/2605.15539",
+    "title": "Muon Nuclear Data Development Project",
+    "authors": [
+      {"family": "Watanabe", "given": "Yukinobu"},
+      {"family": "Niikura", "given": "Megumi"},
+      {"family": "Abe", "given": "Shinichiro"},
+      {"family": "Biswas", "given": "Sayani"},
+      {"family": "Iwamoto", "given": "Hiroki"},
+      {"family": "Hillier", "given": "Adrian"},
+      {"family": "Kawamura", "given": "Naritoshi"},
+      {"family": "Kawase", "given": "Shoichiro"},
+      {"family": "Matsuzaki", "given": "Teiichiro"},
+      {"family": "Minato", "given": "Futoshi"},
+      {"family": "Mizuno", "given": "Rurie"},
+      {"family": "Tomono", "given": "Dai"},
+      {"family": "Yamaguchi", "given": "Yuji"}
+    ],
+    "year": 2026,
+    "arxiv": "2605.15539",
+    "primaryClass": "nucl-ex"
+  },
+  "data": {
+    "title": "muND: Muon Nuclear Data",
+    "author": "muND Project Team"
+  },
+  "dataLicence": null
 }

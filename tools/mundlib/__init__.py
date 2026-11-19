@@ -1,20 +1,30 @@
 """muND (Muon Nuclear Data) database tools.
 
-Pure-Python helpers used by the command line tool ``tools/mund.py`` and by CI:
+Used by the command line tool ``tools/mund.py`` and by the automatic checks:
 
-* :mod:`mundlib.ids`       deterministic MetaID / DataID generation
-* :mod:`mundlib.jsonfmt`   canonical, diff-friendly JSON reading and writing
-* :mod:`mundlib.schema`    JSON Schema validation
-* :mod:`mundlib.database`  loading the ``data/`` tree and semantic validation
+* :mod:`mundlib.ids`       MetaID and DataID
+* :mod:`mundlib.jsonfmt`   canonical JSON that keeps the written digits of numbers
+* :mod:`mundlib.schema`    JSON Schema validation and normalisation
+* :mod:`mundlib.cite`      file labels and citation texts from bibliography entries
+* :mod:`mundlib.database`  the files under ``data/`` and their checks
 * :mod:`mundlib.convert`   lifetime <-> capture rate <-> capture probability
-* :mod:`mundlib.build`     building the distributable files and the web site
+* :mod:`mundlib.build`     the published data files and the web site
 
-The same rules are implemented in JavaScript under ``site/assets/js/core`` for
-the browser.  Shared test vectors in ``tests/vectors`` keep both in sync.
+The browser has the same rules in ``site/assets/js/core`` (one module of the
+same name for each of the first six); the test vectors in ``tests/vectors``
+keep both in agreement.
+
+Words used throughout:
+
+* *file*   one publication: a metadata record (``meta``) and its data entries
+* *entry*  one element of ``data``, identified by its ``datasetId``
+* *code*   ``EXP`` | ``TH`` | ``CUR`` | ``EVAL``, the short form of a file's
+  ``datasetType`` (``experiment`` | ``theory`` | ``curated`` | ``evaluated``)
 """
 
 SUBLIBRARIES = ("XR", "LT", "ES", "BR")
-DATASETS = ("EXP", "TH", "CUR", "EVAL")
+# sub-libraries whose data format is defined
+DEFINED_SUBLIBRARIES = ("LT",)
 
 SUBLIBRARY_TITLES = {
     "XR": "Muonic X-ray energies and intensities",
@@ -23,16 +33,6 @@ SUBLIBRARY_TITLES = {
     "BR": "Production branching ratios of residual nuclei",
 }
 
-# datasetType (as written in the files) -> code used in directory names and identifiers
-DATASET_TYPES = {"experiment": "EXP", "theory": "TH", "curated": "CUR", "evaluated": "EVAL"}
-DATASET_TYPE_OF = {code: name for name, code in DATASET_TYPES.items()}
-
-DATASET_TITLES = {
-    "EXP": "Experimental",
-    "TH": "Theoretical",
-    "CUR": "Curated",
-    "EVAL": "Evaluated",
-}
-
-# Sub-libraries whose data format is defined so far.
-DEFINED_SUBLIBRARIES = ("LT",)
+# datasetType -> code
+CODE_OF = {"experiment": "EXP", "theory": "TH", "curated": "CUR", "evaluated": "EVAL"}
+CODES = tuple(CODE_OF.values())

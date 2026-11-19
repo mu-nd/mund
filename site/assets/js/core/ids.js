@@ -8,7 +8,7 @@
 
 import { sha256 } from './sha256.js';
 
-export const ID_LENGTH = 12;
+const ID_LENGTH = 12;
 const SEPARATOR = '|';
 
 const hash12 = (source) => sha256(source).slice(0, ID_LENGTH);
@@ -45,24 +45,24 @@ export function normalizeMass(mass) {
   return sign + milli.toString();
 }
 
-export function metaSource(sublibrary, dataset, doi, key) {
-  const parts = [sublibrary, `${dataset}-META`, normalizeDoi(doi)];
+export function metaSource(sublibrary, code, doi, key) {
+  const parts = [sublibrary, `${code}-META`, normalizeDoi(doi)];
   const k = normalizeKey(key);
   if (k) parts.push(k);
   return parts.join(SEPARATOR);
 }
 
-export function dataSource(sublibrary, dataset, element, mass, metaId, key) {
-  const parts = [sublibrary, dataset, normalizeElement(element), normalizeMass(mass), metaId];
+export function dataSource(sublibrary, code, element, mass, metaId, key) {
+  const parts = [sublibrary, code, normalizeElement(element), normalizeMass(mass), metaId];
   const k = normalizeKey(key);
   if (k) parts.push(k);
   return parts.join(SEPARATOR);
 }
 
-export function metaId(sublibrary, dataset, doi, key) {
-  return hash12(metaSource(sublibrary, dataset, doi, key));
+export function metaId(sublibrary, code, doi, key) {
+  return hash12(metaSource(sublibrary, code, doi, key));
 }
 
-export function dataId(sublibrary, dataset, element, mass, metaIdValue, key) {
-  return hash12(dataSource(sublibrary, dataset, element, mass, metaIdValue, key));
+export function dataId(sublibrary, code, element, mass, metaIdValue, key) {
+  return hash12(dataSource(sublibrary, code, element, mass, metaIdValue, key));
 }

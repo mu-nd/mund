@@ -10,13 +10,6 @@ const MARGIN = { top: 14, right: 16, bottom: 44, left: 62 };
 const HEIGHT = 340;
 const HIT_RADIUS = 28;
 
-export const SERIES_STYLE = {
-  EXP: { color: 'var(--ds-exp)', shape: 'circle' },
-  TH: { color: 'var(--ds-th)', shape: 'triangle' },
-  CUR: { color: 'var(--ds-cur)', shape: 'square' },
-  EVAL: { color: 'var(--ds-eval)', shape: 'diamond' },
-};
-
 function markerPath(shape, r) {
   switch (shape) {
     case 'square': { const s = r * 0.9; return `M${-s},${-s}H${s}V${s}H${-s}Z`; }
@@ -67,30 +60,38 @@ function logScale(min, max, lo, hi) {
 }
 
 /**
+ * Draw a chart into `container` and redraw it when the width changes.
+ *
  * @param container element that receives the chart
  * @param spec {
- *   series: [{ key, label, context?, points: [{ x, y, lo?, hi?, data }] }],
- *   x: { label, type: 'linear' | 'band', bands?: [{ key, label }], domain?: [min, max] },
+ *   series: [{ label, color, shape, context?, points: [{ x, y, lo?, hi?, data }] }],
+ *       shape is 'circle' | 'triangle' | 'square' | 'diamond'; a context series
+ *       is drawn small, without error bars
+ *   x: { label, type: 'linear', domain: [min, max] }
+ *    | { label, type: 'band', bands: [{ key, label: () => [SVG nodes] }] },
  *   y: { label, log?: boolean },
- *   tooltip(point) -> Node, onSelect(point), selected?: (point) => boolean, keyOf?: (point) => string,
+ *   tooltip(point) -> Node, onSelect(point),
+ *   keyOf(point) -> string, selectedKey?: string,
  *   emptyText
  * }
+ * @returns a function that stops the redrawing
  */
 export function renderChart(container, spec) {
-  const draw = () => drawChart(container, spec);
-  if (container._chartObserver) container._chartObserver.disconnect();
-  container._chartObserver = new ResizeObserver(() => {
-    if (container.clientWidth !== container._chartWidth) draw();
-  });
-  container._chartObserver.observe(container);
+  let drawnWidth = -1;
+  const draw = () => {
+    drawnWidth = container.clientWidth;
+    drawChart(container, spec);
+  };
+  const observer = new ResizeObserver(() => { if (container.clientWidth !== drawnWidth) draw(); });
+  observer.observe(container);
   draw();
+  return () => observer.disconnect();
 }
 
 function drawChart(container, spec) {
   clear(container);
   container.classList.add('chart');
   const width = Math.max(300, container.clientWidth || 600);
-  container._chartWidth = container.clientWidth;
   const series = spec.series.filter((s) => s.points.length);
   const all = series.flatMap((s) => s.points.map((p) => ({ ...p, series: s })));
   const usable = all.filter((p) => Number.isFinite(p.y) && (!spec.y.log || p.y > 0));
@@ -103,11 +104,10 @@ function drawChart(container, spec) {
   // ---- legend (always, for two or more series) -----------------------------
   if (series.length > 1) {
     container.appendChild(h('div', { class: 'chart-legend' }, series.map((s) => {
-      const style = SERIES_STYLE[s.key] || SERIES_STYLE.EXP;
       const r = s.context ? 3 : 5;
       return h('span', { class: 'chart-legend-item' },
         h('svg', { width: 14, height: 14, viewBox: '-7 -7 14 14', 'aria-hidden': 'true' },
-          h('path', { d: markerPath(style.shape, r), fill: style.color })),
+          h('path', { d: markerPath(s.shape, r), fill: s.color })),
         s.label);
     })));
   }
@@ -134,7 +134,7 @@ function drawChart(container, spec) {
       points.forEach((p, i) => offsets.set(p, (i - (points.length - 1) / 2) * step));
     }
     xPos = (p) => MARGIN.left + (index.get(p.x) + 0.5) * bandW + (offsets.get(p) || 0);
-    xTicks = bands.map((b, i) => ({ px: MARGIN.left + (i + 0.5) * bandW, label: b.label, node: b.node }));
+    xTicks = bands.map((b, i) => ({ px: MARGIN.left + (i + 0.5) * bandW, nodes: b.label() }));
   } else {
     const xs = usable.map((p) => p.x);
     const [x0, x1] = spec.x.domain || [Math.min(...xs), Math.max(...xs)];
@@ -178,7 +178,7 @@ function drawChart(container, spec) {
   }));
   for (const t of xTicks) {
     const text = h('text', { class: 'chart-tick', x: t.px, y: MARGIN.top + plotH + 17, 'text-anchor': 'middle' });
-    if (t.node) t.node.forEach((n) => text.appendChild(n()));
+    if (t.nodes) t.nodes.forEach((n) => text.appendChild(n));
     else text.textContent = t.label;
     svg.appendChild(text);
   }
@@ -193,7 +193,6 @@ function drawChart(container, spec) {
   const placed = [];
   const ordered = [...series].sort((a, b) => Number(Boolean(b.context)) - Number(Boolean(a.context)));
   for (const s of ordered) {
-    const style = SERIES_STYLE[s.key] || SERIES_STYLE.EXP;
     const group = h('g', { class: `chart-series${s.context ? ' context' : ''}` });
     for (const point of usable) {
       if (point.series !== s) continue;
@@ -203,15 +202,15 @@ function drawChart(container, spec) {
       if (!s.context && Number.isFinite(p.lo) && Number.isFinite(p.hi)) {
         const yLo = spec.y.log && !(p.lo > 0) ? MARGIN.top + plotH : clampY(yScale(p.lo));
         group.appendChild(h('line', {
-          class: 'chart-error', x1: cx, x2: cx, y1: yLo, y2: clampY(yScale(p.hi)), stroke: style.color,
+          class: 'chart-error', x1: cx, x2: cx, y1: yLo, y2: clampY(yScale(p.hi)), stroke: s.color,
         }));
       }
       const mark = h('path', {
-        class: 'chart-mark', d: markerPath(style.shape, s.context ? 2.2 : 4.5),
-        transform: `translate(${cx.toFixed(1)} ${cy.toFixed(1)})`, fill: style.color,
+        class: 'chart-mark', d: markerPath(s.shape, s.context ? 2.2 : 4.5),
+        transform: `translate(${cx.toFixed(1)} ${cy.toFixed(1)})`, fill: s.color,
       });
-      if (spec.keyOf) mark.dataset.key = spec.keyOf(point);
-      if (spec.selected && spec.selected(point)) mark.classList.add('selected');
+      mark.dataset.key = spec.keyOf(point);
+      if (spec.selectedKey && mark.dataset.key === spec.selectedKey) mark.classList.add('selected');
       group.appendChild(mark);
       placed.push({ point, cx, cy, mark });
     }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://niikura-muon.github.io/mund/schema/v1/lt.schema.json",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json",
   "title": "muND LT dataset file",
-  "description": "One file of the LT sub-library (lifetimes of muonic atoms / nuclear capture rates; called NCR in earlier documents). A file holds one metadata record - one publication, optionally split by a key - and all data entries that refer to it. The member names datasetId, datasetType, nuclide, observable, uncertainties and bibId follow the JSON Schema drafted for muND by S. Kawase (github.com/shkawase/mund). The order of the properties below is the canonical key order of the files.",
+  "description": "One file of the LT sub-library (lifetimes of muonic atoms / nuclear capture rates). A file holds one metadata record - one publication, optionally split by a key - and all data entries that refer to it. The member names datasetId, datasetType, nuclide, observable, uncertainties and bibId follow the JSON Schema drafted for muND by S. Kawase (github.com/shkawase/mund). The order of the properties below is the canonical key order of the files.",
   "type": "object",
   "properties": {
     "format": {"const": "muND/LT/1", "description": "Format identifier of this file."},
@@ -15,7 +15,7 @@
     "data": {
       "type": "array",
       "description": "Data entries. One entry per line in the file.",
-      "items": {"$ref": "#/$defs/dataset"}
+      "items": {"$ref": "#/$defs/entry"}
     }
   },
   "required": ["format", "sublibrary", "datasetType", "meta", "data"],
@@ -25,18 +25,18 @@
       "if": {"properties": {"datasetType": {"const": "experiment"}}, "required": ["datasetType"]},
       "then": {
         "properties": {
-          "meta": {"required": ["facility"]},
-          "data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/notAllowed"}}}}
+          "meta": {"required": ["facility"], "properties": {"software": {"$ref": "#/$defs/forbidden"}}},
+          "data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/forbidden"}}}}
         }
       },
       "else": {
         "properties": {
           "meta": {
             "properties": {
-              "facility": {"$ref": "#/$defs/notAllowed"},
-              "beam": {"$ref": "#/$defs/notAllowed"},
-              "target": {"$ref": "#/$defs/notAllowed"},
-              "detector": {"$ref": "#/$defs/notAllowed"}
+              "facility": {"$ref": "#/$defs/forbidden"},
+              "beam": {"$ref": "#/$defs/forbidden"},
+              "target": {"$ref": "#/$defs/forbidden"},
+              "detector": {"$ref": "#/$defs/forbidden"}
             }
           }
         }
@@ -47,16 +47,20 @@
       "then": {"properties": {"data": {"items": {"required": ["originalData"]}}}}
     },
     {
+      "if": {"properties": {"datasetType": {"enum": ["curated", "evaluated"]}}, "required": ["datasetType"]},
+      "then": {"properties": {"data": {"items": {"properties": {"observable": {"properties": {"kind": {"const": "capture_rate"}}}}}}}}
+    },
+    {
       "if": {"properties": {"datasetType": {"const": "theory"}}, "required": ["datasetType"]},
-      "then": {"properties": {"data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/notAllowed"}}}}}}
+      "then": {"properties": {"data": {"items": {"properties": {"originalData": {"$ref": "#/$defs/forbidden"}}}}}}
     },
     {
       "if": {"properties": {"datasetType": {"const": "evaluated"}}, "required": ["datasetType"]},
-      "else": {"properties": {"meta": {"properties": {"referenceDatabase": {"$ref": "#/$defs/notAllowed"}}}}}
+      "else": {"properties": {"meta": {"properties": {"referenceDatabase": {"$ref": "#/$defs/forbidden"}}}}}
     }
   ],
   "$defs": {
-    "notAllowed": {"not": {}, "description": "This member is not allowed for this dataset type."},
+    "forbidden": {"not": {}, "description": "A member that is not allowed here."},
     "id": {
       "type": "string",
       "pattern": "^[0-9a-f]{12}$",
@@ -98,14 +102,18 @@
         },
         "method": {
           "$ref": "#/$defs/text",
-          "description": "experiment: what was detected (electron, gamma, neutron, charged particle, fission fragment). theory: model or code. curated / evaluated: procedure."
+          "description": "experiment: what was detected (electron, gamma, neutron, charged particle, fission fragment). theory: model or code. curated / evaluated: procedure, including the constants and Huff factors it used."
         },
-        "beam": {"$ref": "#/$defs/text", "description": "experiment only. Beam conditions (free text)."},
+        "beam": {"$ref": "#/$defs/text", "description": "experiment only. Beam conditions: a short summary written for this database from the source, not a quotation (free text)."},
         "target": {
           "$ref": "#/$defs/text",
-          "description": "experiment only. Target: size, gas / liquid / solid, chemical form, enrichment ... (free text)."
+          "description": "experiment only. Target: size, gas / liquid / solid, chemical form, enrichment ... A short summary written for this database from the source, not a quotation (free text)."
         },
-        "detector": {"$ref": "#/$defs/text", "description": "experiment only. Detector set-up (free text)."},
+        "detector": {"$ref": "#/$defs/text", "description": "experiment only. Detector set-up: a short summary written for this database from the source, not a quotation (free text)."},
+        "software": {
+          "$ref": "#/$defs/text",
+          "description": "theory, curated and evaluated only. Program and version that produced the values (e.g. a code name with its version or commit)."
+        },
         "referenceDatabase": {
           "$ref": "#/$defs/text",
           "description": "evaluated only. The set of curated data the evaluation is based on (e.g. a version of the curated library)."
@@ -118,7 +126,7 @@
       "required": ["id", "bibId"],
       "additionalProperties": false
     },
-    "dataset": {
+    "entry": {
       "type": "object",
       "description": "One data entry: one quantity of one nuclide.",
       "properties": {
@@ -135,20 +143,52 @@
         "comment": {"$ref": "#/$defs/text"},
         "originalData": {
           "type": "array",
-          "description": "curated (required) / evaluated (optional): datasetIds this value was derived from.",
-          "items": {"$ref": "#/$defs/id"},
-          "minItems": 1,
-          "uniqueItems": true
+          "description": "curated (required) / evaluated (optional): the entries this value was derived from, each with the entryHash it had when it was used. A later change of such an entry is reported until this entry has been checked again and the new entryHash recorded.",
+          "items": {"$ref": "#/$defs/originalData"},
+          "minItems": 1
         },
         "legacyIds": {
           "type": "array",
-          "description": "Identifiers this entry had in earlier systems.",
+          "description": "Earlier identifiers of this entry; references to them still resolve.",
           "items": {"$ref": "#/$defs/text"},
           "minItems": 1,
           "uniqueItems": true
+        },
+        "corrections": {
+          "type": "array",
+          "description": "Corrections made to this entry after it was first recorded, oldest first. The entry shows the corrected content; each record keeps what it was before, why it was changed and whether the change was checked against the publication.",
+          "items": {"$ref": "#/$defs/correction"},
+          "minItems": 1
         }
       },
       "required": ["datasetId", "nuclide", "observable"],
+      "additionalProperties": false
+    },
+    "originalData": {
+      "type": "object",
+      "properties": {
+        "datasetId": {"$ref": "#/$defs/id", "description": "datasetId of the original entry."},
+        "entryHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{12}$",
+          "description": "Content hash of the original entry (its nuclide and observable as written) at the time it was used; see docs/id-definition.md."
+        }
+      },
+      "required": ["datasetId", "entryHash"],
+      "additionalProperties": false
+    },
+    "correction": {
+      "type": "object",
+      "properties": {
+        "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$", "description": "When the correction was made (YYYY-MM-DD or YYYY-MM)."},
+        "pointer": {"type": "string", "pattern": "^(/[^/]+)+$", "description": "JSON pointer, within the entry, of the member that was corrected (e.g. /nuclide/element)."},
+        "before": {"description": "The member as it was before the correction."},
+        "after": {"description": "The member after the correction."},
+        "formerId": {"$ref": "#/$defs/id", "description": "datasetId the entry had before the correction, when the correction changed it and the earlier identifier is not one of legacyIds (e.g. because it belonged to another entry)."},
+        "reason": {"$ref": "#/$defs/text", "description": "Why the member was corrected."},
+        "checkedAgainstSource": {"type": "boolean", "description": "true: the correction was checked against the publication. false: not yet (e.g. inferred from the data)."}
+      },
+      "required": ["date", "pointer", "before", "after", "reason", "checkedAgainstSource"],
       "additionalProperties": false
     },
     "nuclide": {
@@ -161,14 +201,14 @@
           "maximum": 300,
           "description": "Mass number A. 0 means a target of natural isotopic abundance."
         },
-        "isomer": {"type": "integer", "minimum": 0, "description": "0 = ground state, 1 = first isomeric state ..."}
+        "isomer": {"const": 0, "description": "0 = ground state. Format version 1 holds ground states only."}
       },
       "required": ["element", "mass", "isomer"],
       "additionalProperties": false
     },
     "observable": {
       "type": "object",
-      "description": "The measured or calculated quantity. 'kind' names it; the member of the same name holds value, unit and uncertainties. experiment entries keep the quantity given in the source (the one closest to the original); curated and evaluated entries use capture_rate.",
+      "description": "The measured or calculated quantity. 'kind' names it; the member of the same name holds value, unit and uncertainties. experiment and theory entries keep the quantity given in the source (the one closest to the original); curated and evaluated entries are capture_rate.",
       "properties": {
         "kind": {
           "enum": ["lifetime", "capture_rate", "capture_probability"],
@@ -187,8 +227,8 @@
             "required": ["lifetime"],
             "properties": {
               "lifetime": {"properties": {"unit": {"enum": ["ns", "us"]}, "value": {"exclusiveMinimum": 0}}},
-              "capture_rate": {"$ref": "#/$defs/notAllowed"},
-              "capture_probability": {"$ref": "#/$defs/notAllowed"}
+              "capture_rate": {"$ref": "#/$defs/forbidden"},
+              "capture_probability": {"$ref": "#/$defs/forbidden"}
             }
           }
         },
@@ -198,8 +238,8 @@
             "required": ["capture_rate"],
             "properties": {
               "capture_rate": {"properties": {"unit": {"enum": ["us-1", "ms-1", "s-1"]}}},
-              "lifetime": {"$ref": "#/$defs/notAllowed"},
-              "capture_probability": {"$ref": "#/$defs/notAllowed"}
+              "lifetime": {"$ref": "#/$defs/forbidden"},
+              "capture_probability": {"$ref": "#/$defs/forbidden"}
             }
           }
         },
@@ -209,8 +249,8 @@
             "required": ["capture_probability"],
             "properties": {
               "capture_probability": {"properties": {"unit": {"enum": ["%"]}, "value": {"minimum": 0, "maximum": 100}}},
-              "lifetime": {"$ref": "#/$defs/notAllowed"},
-              "capture_rate": {"$ref": "#/$defs/notAllowed"}
+              "lifetime": {"$ref": "#/$defs/forbidden"},
+              "capture_rate": {"$ref": "#/$defs/forbidden"}
             }
           }
         }
@@ -224,8 +264,8 @@
           "description": "Value as given in the source, written with the same number of digits."
         },
         "unit": {
-          "enum": ["ns", "us", "us-1", "ms-1", "s-1", "%"],
-          "description": "ASCII units: us = microsecond, us-1 = per microsecond."
+          "type": "string",
+          "description": "ASCII units: ns, us (microsecond) for lifetime; us-1 (per microsecond), ms-1, s-1 for capture rate; % for capture probability."
         },
         "uncertainties": {
           "type": "array",

@@ -1,14 +1,12 @@
 # muND identifiers (MetaID and DataID)
 
-This document defines the identifiers used in the muND database. It is a pure
-string definition: it does not depend on a programming language, on the order
-in which data were entered, or on random numbers. The same defining
-information always gives the same identifier.
+The identifiers of the muND database are computed from strings: they do not
+depend on a programming language, on the order in which data were entered, or
+on random numbers. The same defining information always gives the same
+identifier.
 
-Status: **defined for the LT sub-library.** The same idea (deterministic,
-value-independent identifiers) applies to XR, ES and BR, but the fields that
-enter their identifiers have not been decided; do not reuse the LT rule for
-them without a decision.
+The definition covers the LT sub-library. XR, ES and BR have no identifier
+rule: which fields identify their data entries is not decided.
 
 ## 1. Two identifiers
 
@@ -91,34 +89,45 @@ exactly like a real DOI.
 
 ## 5. What happens when the defining information changes
 
-If the element, mass number, key, DOI or dataset type of an entry is
-corrected, its identifier changes — it now identifies something else. To keep
-old references resolvable
+Values, uncertainties and comments are not part of an identifier: correcting
+them keeps the identifier. If the element, mass number, key, DOI or dataset
+type of an entry changes, its identifier changes too, and whoever makes the
+change says which of two things it is:
 
-* the previous identifier is recorded in `legacyIds` of the data entry, and
-* other data entries that listed it in `originalData` are updated.
+* **a correction of the same record** — the previous identifier is recorded in
+  `legacyIds` of the entry, and entries that list it in `originalData` are
+  pointed to the new identifier. The new identifier, the `legacyIds` and the
+  changed references are one reviewable change.
+* **different data** — nothing is carried over; references to the previous
+  identifier no longer resolve and validation reports them until they are
+  resolved by hand.
 
-The data entry tool does both automatically. The explorer finds a data point
-by its former identifiers as well.
+Identity is never inferred from the position of an entry in a file or from the
+order on screen. The data entry tool matches entries by their identifiers and
+asks which of the two cases applies; when it cannot tell which entry became
+which, it re-points nothing. The explorer finds a data point by its former
+identifiers as well. A correction that gives an entry a new identifier which
+cannot be kept in `legacyIds` (because another entry has it) is described in
+the entry's `corrections` (`formerId`).
 
-## 6. Test vectors
+## 6. Content hash of an entry
 
-`tests/vectors/ids.json` contains the identifiers that were in use before
-this repository was created (3 MetaIDs, 67 DataIDs). They pin this definition: the Python implementation
-(`tools/mundlib/ids.py`) and the browser implementation
-(`site/assets/js/core/ids.js`) are tested against them on every change. The
-same page is available on the web site under `tests/`.
+`entryHash` identifies the *content* of a data entry, not the entry:
 
-## 7. History
+```
+entryHash = first 12 hex digits of SHA-256( UTF-8( compact({"nuclide": …, "observable": …}) ) )
+```
 
-* An earlier draft derived one identifier from element, mass, *value* and
-  DOI. It was abandoned because every correction of a value changed the
-  identifier.
-* A UUID as `datasetId` was considered and judged too long; the short
-  deterministic identifier replaced it.
-* The current rule separates MetaID and DataID and leaves out the value. It
-  was agreed in the design discussions of 2026 and reproduces the identifiers
-  that were already in use.
-* Before this repository, the identifiers of the curated data had been
-  computed with the token `TH` instead of `CUR`. This repository uses `CUR`
-  as defined above; the earlier identifiers are kept in `legacyIds`.
+`compact` writes JSON without spaces, with the keys of every object sorted, and
+numbers exactly as written in the file (`756.0` and `756.00` differ). Derived
+entries record the `entryHash` of each original (`originalData`), so a later
+correction of an original is detected even though its identifier stays the
+same. Python: `tools/mundlib/database.py` `entry_hash`; browser:
+`site/assets/js/core/database.js` `entryHash`.
+
+## 7. Test vectors
+
+`tests/vectors/ids.json` holds MetaIDs and DataIDs with the fields they are
+computed from, including a case for every normalisation rule. The Python
+implementation (`tools/mundlib/ids.py`) and the browser implementation
+(`site/assets/js/core/ids.js`) are tested against them on every change.

@@ -1,5 +1,5 @@
 // Names and citation texts derived from a bibliography entry
-// (twin of the helpers in tools/mundlib/database.py and build.py).
+// (twin of tools/mundlib/cite.py).
 //
 // A bibliography entry is a cached subset of the Crossref record of a DOI and
 // uses Crossref's member names:
@@ -7,11 +7,7 @@
 //     "container-title": ["..."], "short-container-title": ["..."], "volume": "...",
 //     "page": "...", "article-number": "...", "published": { "date-parts": [[1987, 6, 1]] } }
 
-export const DATA_DIR = 'data';
-export const MASTER_DIR = 'data/master';
-export const PLACEHOLDER_DOI_PREFIX = '10.1000/';
-
-const CODES = { experiment: 'EXP', theory: 'TH', curated: 'CUR', evaluated: 'EVAL' };
+const PLACEHOLDER_DOI_PREFIX = '10.1000/';
 
 /** ASCII letters and digits of a text (accents removed). */
 export function asciiLabel(text) {
@@ -35,24 +31,17 @@ export function referenceYear(reference) {
 }
 
 export const referenceTitle = (reference) => (reference ? first(reference.title) : '');
-export const referenceJournal = (reference) => (reference
+const referenceJournal = (reference) => (reference
   ? first(reference['short-container-title']) || first(reference['container-title']) : '');
 
-/** Human readable part of a file name: 'Suzuki1987'. */
+/** Readable part of a file name: 'Suzuki1987' (the MetaID that follows it identifies the file). */
 export function fileLabel(meta, reference) {
   const family = asciiLabel(firstAuthor(reference));
   const year = referenceYear(reference);
   if (family && year) return `${family}${year}`;
   if (family) return family;
   const tail = String((meta && meta.bibId) || '').split('/').pop();
-  return asciiLabel(tail) || 'dataset';
-}
-
-/** Canonical repository path of a dataset file. */
-export function datasetPath(obj, reference) {
-  const meta = obj.meta || {};
-  const code = Object.prototype.hasOwnProperty.call(CODES, obj.datasetType) ? CODES[obj.datasetType] : null;
-  return `${DATA_DIR}/${obj.sublibrary}/${code}/${fileLabel(meta, reference)}_${meta.id}.json`;
+  return asciiLabel(tail) || 'file';
 }
 
 export function isPlaceholderDoi(doi) {
@@ -84,8 +73,9 @@ export function citeText(reference, bibId = '') {
   return text;
 }
 
-/** Full author list: 'T. Suzuki, D. F. Measday and J. P. Roalsvig'. */
-export function authorList(reference, max = 12) {
+/** Full author list: 'T. Suzuki, D. F. Measday and J. P. Roalsvig' (at most 12 names). */
+export function authorList(reference) {
+  const max = 12;
   const authors = authorsOf(reference).map((a) => [a.given, a.family || a.name].filter(Boolean).join(' '));
   if (authors.length > max) return `${authors.slice(0, max).join(', ')} et al.`;
   if (authors.length <= 1) return authors.join('');

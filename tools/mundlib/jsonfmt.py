@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from decimal import Decimal
 from typing import Any
 
 _NUMBER_RE = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\Z")
@@ -61,22 +60,15 @@ def loads(text: str) -> Any:
                       parse_constant=_reject_constant)
 
 
-def is_number_lexeme(text: str) -> bool:
+def _is_number_lexeme(text: str) -> bool:
     return bool(_NUMBER_RE.match(text))
 
 
-def make_number(text: str):
-    """Build a number from the text typed by a person (``"13.250"``)."""
-    text = text.strip()
-    if not is_number_lexeme(text):
-        raise ValueError("not a JSON number: %r" % text)
-    if re.search(r"[.eE]", text):
-        return _parse_float(text)
-    return _parse_int(text)
-
-
-def js_number(value) -> str:
-    """Shortest representation as produced by JavaScript ``String(number)``."""
+def lexeme(value) -> str:
+    """Text of a number: its written form when it was read from a file."""
+    lex = getattr(value, "lex", None)
+    if lex is not None and _is_number_lexeme(lex):
+        return lex
     if isinstance(value, bool):
         raise TypeError("bool is not a number")
     if isinstance(value, int):
@@ -84,41 +76,7 @@ def js_number(value) -> str:
     f = float(value)
     if math.isnan(f) or math.isinf(f):
         raise ValueError("NaN and Infinity cannot be stored")
-    if f == 0:
-        return "0"
-    r = repr(f)     # shortest text that round-trips, as in JavaScript
-    if "e" not in r and "E" not in r:
-        return r[:-2] if r.endswith(".0") else r
-    a = abs(f)
-    if 1e-6 <= a < 1e21:
-        s = format(Decimal(r), "f")
-        if "." in s:
-            s = s.rstrip("0").rstrip(".")
-        return s
-    mantissa, exponent = r.lower().split("e")
-    if "." in mantissa:
-        mantissa = mantissa.rstrip("0").rstrip(".")
-    sign = "-" if exponent.startswith("-") else "+"
-    return "%se%s%d" % (mantissa, sign, abs(int(exponent)))
-
-
-def lexeme(value) -> str:
-    """Text of a number: the original spelling if it is still valid."""
-    lex = getattr(value, "lex", None)
-    if lex is not None and is_number_lexeme(lex):
-        return lex
-    return js_number(value)
-
-
-def decimals(value) -> int:
-    """Number of digits after the decimal point in the written form."""
-    lex = lexeme(value)
-    m = re.match(r"-?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?\Z", lex)
-    if not m:
-        return 0
-    frac = len(m.group(1) or "")
-    exp = int(m.group(2) or 0)
-    return max(0, frac - exp)
+    return repr(f)
 
 
 def _scalar(value) -> str:
@@ -169,6 +127,16 @@ def _block(value, level: int) -> str:
 def dumps(value) -> str:
     """Serialise in the canonical muND layout (with trailing newline)."""
     return _block(value, 0) + "\n"
+
+
+def compact(value) -> str:
+    """Text without spaces and with sorted keys (numbers as written): the input of content hashes."""
+    if isinstance(value, dict):
+        return "{" + ",".join("%s:%s" % (json.dumps(str(k), ensure_ascii=False), compact(value[k]))
+                              for k in sorted(value)) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(compact(v) for v in value) + "]"
+    return _scalar(value)
 
 
 def plain(value):

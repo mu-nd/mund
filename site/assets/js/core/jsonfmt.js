@@ -19,7 +19,7 @@ export function isNumberLexeme(text) {
 }
 
 /** Text of a number as JavaScript writes it (shortest round-trip form). */
-export function jsNumber(value) {
+function jsNumber(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new TypeError('NaN and Infinity cannot be stored');
   }
@@ -63,7 +63,7 @@ export function decimals(container, key) {
   return decimalsOfText(numberText(container, key));
 }
 
-export function decimalsOfText(text) {
+function decimalsOfText(text) {
   const m = /^-?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text);
   if (!m) return 0;
   return Math.max(0, (m[1] || '').length - Number(m[2] || 0));
@@ -76,12 +76,6 @@ function copyLexemes(from, to, keys) {
     const k = String(key);
     if (map.has(k)) setLexeme(to, k, map.get(k));
   }
-}
-
-/** Copy the remembered text of from[fromKey] to to[toKey]. */
-export function carryLexeme(from, fromKey, to, toKey) {
-  const lex = getLexeme(from, fromKey);
-  if (lex !== undefined) setLexeme(to, toKey, lex);
 }
 
 /** Deep copy that keeps the written form of numbers. */
@@ -104,7 +98,7 @@ export function clone(value) {
 // parser
 // ---------------------------------------------------------------------------
 
-export class JsonSyntaxError extends SyntaxError {
+class JsonSyntaxError extends SyntaxError {
   constructor(message, text, index) {
     const before = text.slice(0, index);
     const line = before.split('\n').length;
@@ -272,6 +266,20 @@ function block(value, level, container, key) {
       .join(',\n') + '\n' + end + '}';
   }
   return scalar(value, container, key);
+}
+
+function compactValue(value, container, key) {
+  if (Array.isArray(value)) return '[' + value.map((v, i) => compactValue(v, value, i)).join(',') + ']';
+  if (value !== null && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${compactValue(value[k], value, k)}`)
+      .join(',') + '}';
+  }
+  return scalar(value, container, key);
+}
+
+/** Text without spaces and with sorted keys (numbers as written): the input of content hashes. */
+export function compact(value) {
+  return compactValue(value, [value], 0);
 }
 
 /** Serialise in the canonical muND layout (with trailing newline). */

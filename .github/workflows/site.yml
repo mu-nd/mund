@@ -1,0 +1,100 @@
+# Checks every change; on the main branch it then builds the web site from the
+# very commit that was checked - its data as "latest", and the frozen releases
+# stored in releases/ exactly as they are - and publishes it with GitHub Pages.
+#
+# One-time set-up by an owner of the repository:
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+name: Check and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0        # the frozen releases are checked against their commits and tags
+          fetch-tags: true
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install the Python requirements
+        run: pip install -r requirements.txt
+
+      - name: Validate the data
+        run: python tools/mund.py validate
+
+      - name: Check the frozen releases
+        run: python tools/mund.py releases
+
+      - name: Tests of the Python tools
+        run: python -m unittest discover -s tests/python -v
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Tests of the browser code
+        run: node tests/js/run-node.mjs
+
+  build:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0        # describe the version; check the frozen releases against their commits
+          fetch-tags: true
+
+      - name: The commit to build is the commit that was checked
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install the Python requirements
+        run: pip install -r requirements.txt
+
+      - name: Build the site
+        run: python tools/mund.py build --out _site
+
+      - name: latest describes the checked commit
+        run: python -c "import json,sys; c=json.load(open('_site/data/latest/manifest.json'))['commit']; sys.exit(c != '${{ github.sha }}')"
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

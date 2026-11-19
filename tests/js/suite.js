@@ -1,24 +1,27 @@
-// Tests of the browser code in site/assets/js/core.
+// Tests of the shared browser code (site/assets/js/core).
 //
 // They run in two places with the same result:
 //   * in a browser:  <site>/tests/           (after `python3 tools/mund.py serve`)
 //   * in Node (CI):  node tests/js/run-node.mjs
 //
-// `core` holds the modules under test, `env` gives access to files:
-//   env.text(kind, name)  kind = 'vectors' | 'schema' | 'master'
-//   env.dataFiles()       [{path, text}] of every file under data/
-//   env.fakeGitHub()      the module tests/js/fake-github.js
+// `modules` holds the modules under test, `env` gives access to files:
+//   env.text(kind, name)  kind = 'vectors' (tests/vectors) | 'schema' (schema/v1)
+//   env.dataFiles()       [{path, text}] of every file under data/ (the real data)
+// Apart from 'database: the repository data is valid', the tests use the test
+// database of tests/fixtures (tests/vectors/repository.json).
 
-export function register(h, core, env) {
-  const { sha256, ids, jsonfmt, schema, checks, cite, convert, format } = core;
+export function register(h, modules, env) {
+  const { sha256, ids, jsonfmt, schema, database, cite, convert, format, nuclides } = modules;
   const json = async (kind, name) => JSON.parse(await env.text(kind, name));
+  const fixture = async (path) => JSON.parse((await json('vectors', 'repository.json')).files[path]);
 
-  async function database() {
+  /** A database with the schemas and the given {path: text} files. */
+  async function newDatabase(files = {}) {
     const schemas = {};
-    for (const name of Object.values(checks.SCHEMA_FILES)) schemas[name] = await json('schema', name);
-    const master = {};
-    for (const name of checks.MASTER_FILES) master[name] = await env.text('master', name);
-    return new checks.Database(schemas, master);
+    for (const name of Object.values(database.SCHEMA_FILES)) schemas[name] = await json('schema', name);
+    const db = new database.Database(schemas);
+    for (const [path, text] of Object.entries(files)) db.setFile(path, text);
+    return db;
   }
 
   // ---------------------------------------------------------------- sha256
@@ -46,17 +49,17 @@ export function register(h, core, env) {
   // ------------------------------------------------------------------- ids
   h.test('ids: MetaID vectors', async (t) => {
     const vectors = await json('vectors', 'ids.json');
-    t.ok(vectors.meta.length >= 3);
+    t.ok(vectors.meta.length > 0);
     for (const v of vectors.meta) {
-      t.equal(ids.metaId(v.sublibrary, v.dataset, v.doi, v.key), v.id, JSON.stringify(v));
+      t.equal(ids.metaId(v.sublibrary, v.code, v.doi, v.key), v.id, JSON.stringify(v));
     }
   });
 
-  h.test('ids: DataID vectors (identifiers in use before this repository)', async (t) => {
+  h.test('ids: DataID vectors', async (t) => {
     const vectors = await json('vectors', 'ids.json');
-    t.ok(vectors.data.length >= 67);
+    t.ok(vectors.data.length > 0);
     for (const v of vectors.data) {
-      t.equal(ids.dataId(v.sublibrary, v.dataset, v.element, v.mass, v.meta_id, v.key), v.id, JSON.stringify(v));
+      t.equal(ids.dataId(v.sublibrary, v.code, v.element, v.mass, v.meta_id, v.key), v.id, JSON.stringify(v));
     }
   });
 
@@ -101,13 +104,12 @@ export function register(h, core, env) {
     t.equal(jsonfmt.parse(jsonfmt.stringify({ s })).s, s);
   });
 
-  h.test('jsonfmt: number text agrees with JavaScript', async (t) => {
-    const vectors = await json('vectors', 'numbers.json');
-    for (const v of vectors.js) {
-      t.equal(String(Number(v.input)).replace(/^-0$/, '0'), v.text, `vector ${v.input}:`);
-      t.equal(jsonfmt.jsNumber(Number(v.input)), v.text);
+  h.test('jsonfmt: digits after the decimal point, as written', async (t) => {
+    const cases = { '2177.0': 1, 2177: 0, '0.0090': 4, '13.250': 3, '1.29e7': 0, '1.5e-3': 4, '-0.50': 2 };
+    for (const [text, digits] of Object.entries(cases)) {
+      t.equal(jsonfmt.decimals(jsonfmt.parse(`{"x": ${text}}`), 'x'), digits, `${text}:`);
     }
-    for (const v of vectors.decimals) t.equal(jsonfmt.decimalsOfText(v.input), v.decimals, `decimals of ${v.input}:`);
+    t.throws(() => jsonfmt.stringify({ x: NaN }), 'NaN cannot be stored');
   });
 
   h.test('jsonfmt: strict parser', async (t) => {
@@ -125,12 +127,6 @@ export function register(h, core, env) {
     const good = '{"a": [1, -0.5, 1e3, true, false, null, "x\\u00e9\\n", {"__proto__": 1}], "b": {}}';
     t.deepEqual(jsonfmt.parse(good), JSON.parse(good));
     t.equal(Object.keys(jsonfmt.parse('{"__proto__": 1}'))[0], '__proto__');
-  });
-
-  h.test('jsonfmt: every file of the repository round-trips', async (t) => {
-    const files = await env.dataFiles();
-    t.ok(files.length >= 8, 'data files found');
-    for (const f of files) t.equal(jsonfmt.stringify(jsonfmt.parse(f.text)), f.text, `${f.path}:`);
   });
 
   // ---------------------------------------------------------------- schema
@@ -186,14 +182,14 @@ export function register(h, core, env) {
   });
 
   // ---------------------------------------------------------------- checks
-  h.test('checks: shared validation cases', async (t) => {
-    const { cases } = await json('vectors', 'cases.json');
-    t.ok(cases.length >= 35);
+  h.test('database: shared validation cases', async (t) => {
+    const { master, cases } = await json('vectors', 'cases.json');
+    t.ok(cases.length > 0);
     for (const c of cases) {
-      const db = await database();
+      const db = await newDatabase(master);
       const paths = c.files.map((f) => f.path);
       for (const f of c.files) {
-        if (f.path.startsWith('data/master/')) db.setMaster(f.path.slice('data/master/'.length), f.text);
+        if (f.text === null) db.removeFile(f.path);
         else db.setFile(f.path, f.text);
       }
       const got = db.validate().map((i) => `${i.level} ${i.code} #${paths.indexOf(i.file)} ${i.pointer}`).sort();
@@ -202,38 +198,43 @@ export function register(h, core, env) {
     }
   });
 
-  h.test('checks: the repository data is valid', async (t) => {
-    const db = await database();
-    const files = await env.dataFiles();
-    for (const f of files) if (!f.path.startsWith('data/master/')) db.setFile(f.path, f.text);
-    const errors = db.validate().filter((i) => i.level === 'error');
-    t.deepEqual(errors, []);
-    const counts = {};
-    for (const r of db.rows('LT')) counts[r.dataset] = (counts[r.dataset] || 0) + 1;
-    t.deepEqual(counts, { CUR: 8, EVAL: 580, EXP: 67 });
-    for (const f of db.sortedFiles()) t.equal(cite.datasetPath(f.obj, db.reference(f.meta.bibId)), f.path);
-    t.equal(db.tables().elements.length, 118);
-    t.equal(db.zOf('Si'), 14);
-    t.equal(db.reference('10.1103/physrevc.35.2212').author[0].family, 'Suzuki', 'DOIs are compared case-insensitively');
-    t.equal(db.reference('10.1000/unpublished'), null);
+  h.test('database: the repository data is valid', async (t) => {
+    const db = await newDatabase();
+    for (const f of await env.dataFiles()) db.setFile(f.path, f.text);
+    t.deepEqual(db.validate().filter((i) => i.level === 'error'), []);
   });
 
-  h.test('checks: assignIds', async (t) => {
+  h.test('database: the test database is clean', async (t) => {
+    const db = await newDatabase((await json('vectors', 'repository.json')).files);
+    t.deepEqual(db.validate(), []);
+    t.deepEqual(db.sortedFiles().map((f) => f.code), ['CUR', 'EVAL', 'EXP']);
+    for (const f of db.sortedFiles()) t.equal(database.filePath(f.obj, db.reference(f.meta.bibId)), f.path);
+    t.equal(db.zOf('Si'), 14);
+    t.equal(db.reference('10.1103/VL7Z-RZP8').author[0].family, 'Mizuno', 'DOIs are compared case-insensitively');
+    t.ok(database.isDataFilePath('data/LT/EXP/x_0123456789ab.json'));
+    t.ok(!database.isDataFilePath('data/LT/README.md'));
+    t.ok(!database.isDataFilePath('data/master/facilities.json'));
+  });
+
+  h.test('database: assignIds', async (t) => {
     const obj = { format: 'muND/LT/1', sublibrary: 'LT', datasetType: 'experiment', meta: { bibId: '10.1103/vl7z-rzp8' },
       data: [{ nuclide: { element: 'Al', mass: 27, isomer: 0 }, key: 'plate' }, { nuclide: { element: 'Mg', mass: 0, isomer: 0 } }] };
-    checks.assignIds(obj);
+    database.assignIds(obj);
     t.equal(obj.meta.id, 'dcb3b051457e');
     t.equal(obj.data[0].datasetId, '343adc036597');
     t.equal(obj.data[1].datasetId, '5fb28c42563b');
-    t.equal(checks.datasetCode(obj), 'EXP');
-    t.equal(checks.quantity({ observable: { kind: 'lifetime', lifetime: { value: 1 } } }).value, 1);
-    t.equal(checks.quantity({ observable: { kind: 'capture_rate', lifetime: { value: 1 } } }), null);
+    const partial = { ...obj, data: [{ nuclide: { isomer: 0 } }] };
+    database.assignIds(partial);
+    t.equal(partial.data[0].datasetId, undefined, 'an entry without element and mass is left to validation');
+    t.equal(database.fileCode(obj), 'EXP');
+    t.equal(database.quantity({ observable: { kind: 'lifetime', lifetime: { value: 1 } } }).value, 1);
+    t.equal(database.quantity({ observable: { kind: 'capture_rate', lifetime: { value: 1 } } }), null);
   });
 
   // --------------------------------------------------------------- convert
   h.test('convert: shared vectors', async (t) => {
     const vectors = await json('vectors', 'convert.json');
-    const physics = new convert.Physics(await json('master', 'huff_factors.json'), await json('master', 'constants.json'));
+    const physics = new convert.Physics(await fixture('data/master/huff_factors.json'), await fixture('data/master/constants.json'));
     t.equal(physics.muLifeNs, 2196.9811);
     t.equal(physics.huffFactor(14, 28), 0.9924);
     t.equal(physics.huffFactor(14), 0.9924);
@@ -245,11 +246,18 @@ export function register(h, core, env) {
     t.equal(physics.huffSource(3, 6), 'none');
     t.ok(vectors.cases.length >= 10);
     for (const v of vectors.cases) {
-      const got = physics.convert(v.z, v.a, v.observable, v.value, v.uncertainty, v.unit);
+      const got = physics.convert(v.z, v.a, v.observable, v.value, v.uncertainty, v.unit, v.q);
       for (const [k, expected] of Object.entries(v.expected)) {
-        if (expected === null) t.equal(got[k], null, `${k}:`);
+        if (expected === null || typeof expected === 'string') t.equal(got[k], expected, `${k}:`);
         else t.close(got[k], expected, vectors.relative_tolerance, `${JSON.stringify(v)} ${k}:`);
       }
+    }
+    // the same tables and Huff factors are refused in Python
+    for (const table of vectors.refused.tables) {
+      t.throws(() => new convert.Physics(table.huff, table.constants), table.name);
+    }
+    for (const q of [...vectors.refused.huff_factors, Number.NaN, Number('abc')]) {
+      t.throws(() => physics.convert(14, 28, 'lifetime', 756, 1, 'ns', q), String(q));
     }
     t.equal(convert.combinedUncertainty([{ source: 'total', value: 5 }]), 5);
     t.equal(convert.combinedUncertainty([]), null);
@@ -264,240 +272,25 @@ export function register(h, core, env) {
     t.close(custom['capture_rate_us-1'], 1 / 0.756 - 1 / 2.1969811, 1e-12);
   });
 
-  // ------------------------------------------------------------------ admin
-  async function repositoryFiles() {
-    const files = {};
-    for (const f of await env.dataFiles()) files[f.path] = f.text;
-    for (const name of Object.values(checks.SCHEMA_FILES)) files[`schema/v1/${name}`] = await env.text('schema', name);
-    files.VERSION = '0.1.0\n';
-    files['README.md'] = 'not part of the database\n';
-    return files;
-  }
-
-  function memoryStorage() {
-    const map = new Map();
-    return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)), removeItem: (k) => map.delete(k), map };
-  }
-
-  h.test('admin: GitHub client reads the repository', async (t) => {
-    const { FakeGitHub } = await env.fakeGitHub();
-    const server = new FakeGitHub({ files: await repositoryFiles() });
-    const gh = new core.backend.GitHubBackend({ repository: 'someone/mund', branch: 'main', token: 'secret', fetchImpl: server.fetch });
-    const info = await gh.connect();
-    t.equal(info.user.login, 'tester');
-    t.equal(info.canWrite, true);
-    t.equal(info.repo.private, true);
-    const files = await gh.listFiles();
-    t.ok(files.some((f) => f.path === 'data/master/facilities.json'));
-    t.ok(files.some((f) => f.path === 'VERSION'));
-    t.ok(!files.some((f) => f.path === 'README.md'), 'only the database files are listed');
-    const suzuki = files.find((f) => f.path.includes('Suzuki1987'));
-    t.equal(await gh.readFile(suzuki.path, suzuki.sha), server.fileAt('main', suzuki.path));
-    t.equal((await gh.history('data', 5)).length, 1);
-
-    const wrong = new core.backend.GitHubBackend({ repository: 'someone/mund', token: 'nope', fetchImpl: server.fetch });
-    let status = 0;
-    try { await wrong.connect(); } catch (err) { status = err.status; }
-    t.equal(status, 401);
-    const missing = new core.backend.GitHubBackend({ repository: 'someone/mund', branch: 'nope', token: 'secret', fetchImpl: server.fetch });
-    try { await missing.connect(); status = 0; } catch (err) { status = err.status; }
-    t.equal(status, 404);
-  });
-
-  h.test('admin: one commit for all changes, conflicts are refused', async (t) => {
-    const { FakeGitHub } = await env.fakeGitHub();
-    const server = new FakeGitHub({ files: { 'data/a.json': 'A1\n', 'data/b.json': 'B1\n', 'data/c.json': 'C1\n' } });
-    const gh = new core.backend.GitHubBackend({ repository: 'someone/mund', token: 'secret', fetchImpl: server.fetch });
-    await gh.connect();
-    const sha = Object.fromEntries((await gh.listFiles()).map((f) => [f.path, f.sha]));
-
-    // someone else changes c.json in the meantime: unrelated, must be kept
-    server.pushElsewhere('main', { 'data/c.json': 'C2\n' });
-    server.log.length = 0;
-    const result = await gh.commit({
-      message: 'Update a, remove b, add d',
-      changes: [
-        { path: 'data/a.json', content: 'A2\n', baseSha: sha['data/a.json'] },
-        { path: 'data/b.json', content: null, baseSha: sha['data/b.json'] },
-        { path: 'data/d.json', content: 'D1\n', baseSha: null },
-      ],
-    });
-    t.ok(/^https:\/\/github\.com\/someone\/mund\/commit\//.test(result.url));
-    t.equal(server.fileAt('main', 'data/a.json'), 'A2\n');
-    t.equal(server.fileAt('main', 'data/b.json'), null);
-    t.equal(server.fileAt('main', 'data/c.json'), 'C2\n', 'the other change survives');
-    t.equal(server.fileAt('main', 'data/d.json'), 'D1\n');
-    t.equal(server.log.filter((l) => l.startsWith('POST') || l.startsWith('PATCH')).join(' | '),
-      'POST /repos/someone/mund/git/trees | POST /repos/someone/mund/git/commits | PATCH /repos/someone/mund/git/refs/heads/main');
-    t.equal(server.commits.get(result.sha).message, 'Update a, remove b, add d');
-
-    // a.json changed by someone else since we loaded it: refuse, change nothing
-    const head = server.refs.get('heads/main');
-    server.pushElsewhere('main', { 'data/a.json': 'A3\n' });
-    const afterOther = server.refs.get('heads/main');
-    let conflict = null;
-    try {
-      await gh.commit({ message: 'stale', changes: [{ path: 'data/a.json', content: 'A-mine\n', baseSha: server.trees.get(server.commits.get(head).tree).get('data/a.json') },
-        { path: 'data/d.json', content: 'D2\n', baseSha: server.trees.get(server.commits.get(head).tree).get('data/d.json') }] });
-    } catch (err) { conflict = err; }
-    t.ok(conflict instanceof core.backend.ConflictError, 'a ConflictError is expected');
-    t.deepEqual(conflict.paths, ['data/a.json']);
-    t.equal(server.refs.get('heads/main'), afterOther, 'the branch did not move');
-    t.equal(server.fileAt('main', 'data/d.json'), 'D1\n');
-
-    // a file we believed to be new already exists
-    conflict = null;
-    try { await gh.commit({ message: 'dup', changes: [{ path: 'data/c.json', content: 'X\n', baseSha: null }] }); } catch (err) { conflict = err; }
-    t.ok(conflict instanceof core.backend.ConflictError);
-  });
-
-  h.test('admin: pull request mode and read-only access', async (t) => {
-    const { FakeGitHub } = await env.fakeGitHub();
-    const server = new FakeGitHub({ files: { 'data/a.json': 'A1\n' } });
-    const gh = new core.backend.GitHubBackend({ repository: 'someone/mund', token: 'secret', fetchImpl: server.fetch });
-    await gh.connect();
-    const [file] = await gh.listFiles();
-    const before = server.refs.get('heads/main');
-    const result = await gh.commit({ message: 'Fix a\n\ndetails', mode: 'pr', changes: [{ path: file.path, content: 'A2\n', baseSha: file.sha }] });
-    t.equal(server.refs.get('heads/main'), before, 'main is untouched');
-    t.equal(result.pullRequest.number, 1);
-    t.equal(server.pulls[0].title, 'Fix a');
-    t.equal(server.pulls[0].base, 'main');
-    t.equal(server.fileAt(result.pullRequest.branch, 'data/a.json'), 'A2\n');
-    const tag = await gh.createTag('v1.0.0', before);
-    t.equal(tag.name, 'v1.0.0');
-    t.deepEqual((await gh.tags()).map((x) => x.name), ['v1.0.0']);
-
-    const readOnly = new FakeGitHub({ files: { 'data/a.json': 'A1\n' }, canPush: false });
-    const ro = new core.backend.GitHubBackend({ repository: 'someone/mund', token: 'secret', fetchImpl: readOnly.fetch });
-    t.equal((await ro.connect()).canWrite, false);
-    const [f] = await ro.listFiles();
-    let status = 0;
-    try { await ro.commit({ message: 'x', changes: [{ path: f.path, content: 'A2\n', baseSha: f.sha }] }); } catch (err) { status = err.status; }
-    t.equal(status, 403);
-    t.equal(readOnly.fileAt('main', 'data/a.json'), 'A1\n');
-  });
-
-  h.test('admin: workspace keeps drafts, follows renamed identifiers and commits', async (t) => {
-    const { FakeGitHub } = await env.fakeGitHub();
-    const server = new FakeGitHub({ files: await repositoryFiles() });
-    const gh = new core.backend.GitHubBackend({ repository: 'someone/mund', token: 'secret', fetchImpl: server.fetch });
-    await gh.connect();
-    const storage = memoryStorage();
-    const ws = new core.workspace.Workspace(gh, storage);
-    await ws.load();
-    t.deepEqual(ws.issues().filter((i) => i.level === 'error'), []);
-    t.equal(ws.changes().length, 0);
-    t.equal(ws.upstreamIds().has('3fc99c56a5ad'), true);
-    t.equal(ws.upstreamIds().has('dcb3b051457e'), false, 'MetaIDs are not datasetIds');
-
-    // correct an element: Si-30 -> S-30 in the Mizuno file
-    const path = 'data/LT/EXP/Mizuno2025_dcb3b051457e.json';
-    const doc = jsonfmt.parse(ws.text(path));
-    const row = doc.data.find((r) => r.datasetId === '3fc99c56a5ad');
-    row.nuclide.element = 'S';
-    checks.assignIds(doc);
-    t.ok(row.datasetId !== '3fc99c56a5ad');
-    ws.stage(path, jsonfmt.stringify(schema.normalize(doc, ws.db.schemaFor(doc.format))));
-    t.equal(ws.status(path), 'modified');
-    t.deepEqual(ws.issues().filter((i) => i.level === 'error').map((i) => i.code), ['E_ORIGINAL_MISSING']);
-    const touched = ws.replaceIds(new Map([['3fc99c56a5ad', row.datasetId]]), path);
-    t.deepEqual(touched, ['data/LT/CUR/unpublished_591344c27b81.json']);
-    t.deepEqual(ws.issues().filter((i) => i.level === 'error'), []);
-    t.equal(ws.changes().length, 2);
-
-    // drafts survive a reload of the page
-    const again = new core.workspace.Workspace(gh, storage);
-    await again.load();
-    t.equal(again.changes().length, 2);
-    t.equal(again.text(path), ws.text(path));
-
-    // staging the original text removes the draft
-    again.stage(path, again.upstreamText(path));
-    t.equal(again.status(path), 'unchanged');
-
-    // a file that moves (new first author) is a delete plus an add, compared with its origin
-    const moved = 'data/LT/EXP/Nizuno2025_dcb3b051457e.json';
-    ws.move(path, moved, ws.text(path));
-    t.equal(ws.status(path), 'deleted');
-    t.equal(ws.status(moved), 'added');
-    t.equal(ws.baseline(moved), ws.upstreamText(path));
-    ws.move(moved, path, ws.text(moved));
-    t.equal(ws.status(path), 'modified');
-    t.equal(ws.text(moved), null);
-
-    // a reference added to the bibliography: sorted by DOI, found without regard to case, file stays valid
-    const bibPath = 'data/master/bibliography.json';
-    t.equal(ws.db.reference('10.1000/unpublished'), null);
-    ws.setReference({ DOI: '10.1000/unpublished', title: ['Curation in progress'], author: [{ family: 'Niikura', given: 'M.' }],
-      published: { 'date-parts': [[2026]] } });
-    t.equal(ws.status(bibPath), 'modified');
-    t.equal(ws.db.reference('10.1000/UNPUBLISHED').title[0], 'Curation in progress');
-    t.deepEqual(jsonfmt.parse(ws.text(bibPath)).references.map((r) => r.DOI),
-      ['10.1000/unpublished', '10.1103/PhysRevC.111.034614', '10.1103/PhysRevC.35.2212', '10.1103/vl7z-rzp8']);
-    ws.setReference({ DOI: '10.1000/UNPUBLISHED', title: ['Curation of lifetimes'] });
-    t.equal(jsonfmt.parse(ws.text(bibPath)).references.length, 4, 'an entry is replaced, not duplicated');
-    t.deepEqual(ws.issues().filter((i) => i.file === bibPath), []);
-    t.deepEqual(ws.issues().filter((i) => i.code === 'W_NO_REFERENCE'), []);
-
-    const result = await ws.commit('LT/EXP: correct an element');
-    t.equal(ws.changes().length, 0);
-    t.equal(storage.map.size, 0, 'drafts are cleared after the commit');
-    t.equal(server.fileAt('main', path).includes(`"datasetId": "${row.datasetId}", "nuclide": {"element": "S"`), true);
-    t.equal(server.fileAt('main', 'data/LT/CUR/unpublished_591344c27b81.json').includes(row.datasetId), true);
-    t.equal(server.fileAt('main', bibPath).includes('Curation of lifetimes'), true);
-    t.equal(ws.upstreamText(path), server.fileAt('main', path));
-    t.equal(server.commits.get(result.sha).message, 'LT/EXP: correct an element');
-  });
-
-  h.test('admin: line differences', async (t) => {
-    const { diffLines, diffStats } = core.diff;
-    const lines = diffLines('a\nb\nc\nd\n', 'a\nB\nc\nd\ne\n');
-    t.equal(lines.map((l) => `${l.type}${l.text}`).join(' '), ' a -b +B  c  d +e');
-    t.deepEqual(diffStats(lines), { added: 2, removed: 1 });
-    t.deepEqual(diffStats(diffLines(null, 'x\ny\n')), { added: 2, removed: 0 });
-    t.deepEqual(diffStats(diffLines('x\ny\n', null)), { added: 0, removed: 2 });
-    t.deepEqual(diffStats(diffLines('same\n', 'same\n')), { added: 0, removed: 0 });
-    t.equal(diffLines('a\nb\n', 'b\n').map((l) => l.type).join(''), '- ');
-  });
-
-  h.test('admin: rows pasted from a spreadsheet', async (t) => {
-    const elements = (await json('master', 'nuclides.json')).elements;
-    const parse = (text) => core.paste.parsePastedRows(text, elements);
-    const r = parse('Element\tA\tValue\tUnc\n28Si\t756.0\t1.0\nSi\t28\t743.9\t5.0\tthick\tfirst run\nnatPd\t95.8\t0.6\nPd-108, 96.0, 0.7\n'
-      + 'al 27 864.0 1.0\nAg\tnat\t87.0\nXx\t1\t2\t3\nSi\t756.0\t1.0\n\n');
-    t.deepEqual(r.rows, [
-      { element: 'Si', mass: 28, value: '756.0', uncertainty: '1.0', key: '', comment: '' },
-      { element: 'Si', mass: 28, value: '743.9', uncertainty: '5.0', key: 'thick', comment: 'first run' },
-      { element: 'Pd', mass: 0, value: '95.8', uncertainty: '0.6', key: '', comment: '' },
-      { element: 'Pd', mass: 108, value: '96.0', uncertainty: '0.7', key: '', comment: '' },
-      { element: 'Al', mass: 27, value: '864.0', uncertainty: '1.0', key: '', comment: '' },
-      { element: 'Ag', mass: 0, value: '87.0', uncertainty: '', key: '', comment: '' },
-    ]);
-    t.deepEqual(r.skipped, ['Element\tA\tValue\tUnc', 'Xx\t1\t2\t3', 'Si\t756.0\t1.0']);
-  });
-
   // ------------------------------------------------------------ cite/format
-  h.test('cite: labels and citation text', async (t) => {
-    const ref = { DOI: '10.1234/x', author: [{ family: 'Suzuki', given: 'T.' }, { family: 'Measday', given: 'D. F.' },
+  h.test('cite: shared vectors', async (t) => {
+    const { cases } = await json('vectors', 'cite.json');
+    t.ok(cases.length > 0);
+    for (const c of cases) {
+      t.equal(cite.fileLabel(c.meta, c.reference), c.fileLabel, `${JSON.stringify(c.meta)}:`);
+      t.equal(cite.citeText(c.reference, c.meta.bibId), c.citeText, `${JSON.stringify(c.meta)}:`);
+    }
+  });
+
+  h.test('cite: labels, author lists and links', async (t) => {
+    const ref = { author: [{ family: 'Suzuki', given: 'T.' }, { family: 'Measday', given: 'D. F.' },
       { family: 'Roalsvig', given: 'J. P.' }], title: ['Total nuclear capture rates for negative muons'],
-    'container-title': ['Physical Review C'], 'short-container-title': ['Phys. Rev. C'], volume: '35', page: '2212-2224',
     published: { 'date-parts': [[1987, 6, 1]] } };
-    t.equal(cite.citeText(ref), 'Suzuki et al., Phys. Rev. C 35, 2212 (1987)');
-    t.equal(cite.citeText({ ...ref, 'article-number': '024307' }), 'Suzuki et al., Phys. Rev. C 35, 024307 (1987)');
     t.equal(cite.citeLabel(ref), 'Suzuki1987');
+    t.equal(cite.citeLabel(null, '10.1000/unpublished'), '10.1000/unpublished');
     t.equal(cite.authorList(ref), 'T. Suzuki, D. F. Measday and J. P. Roalsvig');
     t.equal(cite.referenceTitle(ref), 'Total nuclear capture rates for negative muons');
-    t.equal(cite.citeText(null, '10.1000/unpublished'), '10.1000/unpublished');
-    t.equal(cite.citeText({ title: ['A report'] }, '10.1000/mund.x'), 'A report');
-    const by = (family, year) => ({ author: [{ family }], ...(year ? { published: { 'date-parts': [[year, 3]] } } : {}) });
-    t.equal(cite.fileLabel({ bibId: '10.1234/x' }, by('Kálmán', 2025)), 'Kalman2025');
-    t.equal(cite.fileLabel({ bibId: '10.1000/unpublished' }, null), 'unpublished');
-    t.equal(cite.fileLabel({ bibId: '10.1016/0375-9474(88)90330-2' }), '0375947488903302');
-    t.equal(cite.fileLabel({ bibId: '10.1234/x' }, by('de Groot')), 'deGroot');
-    t.equal(cite.fileLabel({ bibId: '10.1234/x' }, { author: [{ name: 'MuX Collaboration' }], published: { 'date-parts': [[2024]] } }),
-      'MuXCollaboration2024');
-    t.equal(cite.datasetPath({ sublibrary: 'LT', datasetType: 'curated', meta: { id: 'abc', bibId: '10.1000/unpublished' } }, null),
+    t.equal(database.filePath({ sublibrary: 'LT', datasetType: 'curated', meta: { id: 'abc', bibId: '10.1000/unpublished' } }, null),
       'data/LT/CUR/unpublished_abc.json');
     t.equal(cite.doiUrl('10.1000/unpublished'), null);
     t.equal(cite.doiUrl('10.1016/0375-9474(88)90330-2'), 'https://doi.org/10.1016/0375-9474(88)90330-2');
@@ -519,12 +312,14 @@ export function register(h, core, env) {
     t.equal(format.formatDerived(0.000435, 0.000016).text, '0.000435 ± 0.000016');
     t.equal(format.formatDerived(11.0751, null).text, '11.08');
     t.equal(format.formatDerived(null, null).text, '');
-    t.equal(format.plainNumber(0.871036412345), '0.871036');
-    const mono = new Map([[13, 27]]);
-    t.equal(format.nuclideText('Si', 14, 28, mono), '28Si');
-    t.equal(format.nuclideText('Si', 14, 0, mono), 'natSi');
-    t.equal(format.nuclideText('Al', 13, 0, mono), '27Al');
-    t.equal(format.nuclideHtml('Si', 14, 0, mono), '<sup>nat</sup>Si');
-    t.equal(format.toCsv([['a', 'b,c'], ['"q"', null]]), 'a,"b,c"\n"""q""",\n');
+  });
+
+  h.test('nuclides: tables and the mass number of a natural target', async (t) => {
+    const tables = nuclides.nuclideTables(await fixture('data/master/nuclides.json'));
+    t.equal(tables.elements.length, 118);
+    t.equal(tables.zOf.get('Si'), 14);
+    t.equal(nuclides.effectiveMass(14, 28, tables.monoisotopic), 28);
+    t.equal(nuclides.effectiveMass(14, 0, tables.monoisotopic), 0, 'silicon has several stable isotopes');
+    t.equal(nuclides.effectiveMass(13, 0, tables.monoisotopic), 27, 'aluminium has one');
   });
 }

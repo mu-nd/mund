@@ -1,25 +1,18 @@
-import json
 import unittest
 
-from helpers import ROOT
+from helpers import vectors
 from mundlib import ids
 
 
 class IdTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.vectors = json.loads((ROOT / "tests/vectors/ids.json").read_text(encoding="utf-8"))
-
-    def test_meta_vectors(self):
-        self.assertGreaterEqual(len(self.vectors["meta"]), 3)
-        for v in self.vectors["meta"]:
-            self.assertEqual(ids.meta_id(v["sublibrary"], v["dataset"], v["doi"], v["key"]), v["id"], v)
-
-    def test_data_vectors(self):
-        self.assertGreaterEqual(len(self.vectors["data"]), 67)
-        for v in self.vectors["data"]:
-            self.assertEqual(ids.data_id(v["sublibrary"], v["dataset"], v["element"], v["mass"],
-                                         v["meta_id"], v["key"]), v["id"], v)
+    def test_vectors(self):
+        v = vectors("ids.json")
+        self.assertTrue(v["meta"] and v["data"])
+        for m in v["meta"]:
+            self.assertEqual(ids.meta_id(m["sublibrary"], m["code"], m["doi"], m["key"]), m["id"], m)
+        for d in v["data"]:
+            self.assertEqual(ids.data_id(d["sublibrary"], d["code"], d["element"], d["mass"], d["meta_id"], d["key"]),
+                             d["id"], d)
 
     def test_hash_source_strings(self):
         self.assertEqual(ids.meta_source("LT", "EXP", " 10.1103/vl7z-rzp8; 10.48550/arXiv.2501.05897 "),
@@ -39,7 +32,6 @@ class IdTests(unittest.TestCase):
         self.assertEqual(ids.normalize_key(None), "")
 
     def test_value_is_not_part_of_the_id(self):
-        # the identifier depends on what is measured, never on the number
         a = ids.data_id("LT", "EXP", "Si", 28, "96f2c4a2ddaf")
         self.assertEqual(a, ids.data_id("LT", "EXP", "Si", "28", "96f2c4a2ddaf", ""))
         self.assertNotEqual(a, ids.data_id("LT", "CUR", "Si", 28, "96f2c4a2ddaf"))

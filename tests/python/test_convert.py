@@ -1,17 +1,21 @@
 import json
 import unittest
 
-from helpers import ROOT
+from helpers import FIXTURE, vectors
 from mundlib.convert import Physics, combined_uncertainty
-from mundlib.database import Database
+
+
+def master(name):
+    return json.loads((FIXTURE / "data" / "master" / name).read_text(encoding="utf-8"))
 
 
 class ConvertTests(unittest.TestCase):
+    """With the master tables of the test database."""
+
     @classmethod
     def setUpClass(cls):
-        db = Database.load(ROOT)
-        cls.physics = Physics(db.master_obj("huff_factors.json"), db.master_obj("constants.json"))
-        cls.vectors = json.loads((ROOT / "tests/vectors/convert.json").read_text(encoding="utf-8"))
+        cls.physics = Physics(master("huff_factors.json"), master("constants.json"))
+        cls.vectors = vectors("convert.json")
 
     def test_master_tables(self):
         p = self.physics
@@ -79,14 +83,27 @@ class ConvertTests(unittest.TestCase):
                                                {"source": "systematic", "value": 1.0}]), 4.0)
 
     def test_shared_vectors(self):
-        self.assertGreaterEqual(len(self.vectors["cases"]), 10)
+        tolerance = self.vectors["relative_tolerance"]
+        self.assertTrue(self.vectors["cases"])
         for v in self.vectors["cases"]:
-            got = self.physics.convert(v["z"], v["a"], v["observable"], v["value"], v["uncertainty"], v["unit"])
+            got = self.physics.convert(v["z"], v["a"], v["observable"], v["value"], v["uncertainty"], v["unit"],
+                                       v.get("q"))
             for k, expected in v["expected"].items():
-                if expected is None:
-                    self.assertIsNone(got[k])
+                if expected is None or isinstance(expected, str):
+                    self.assertEqual(got[k], expected, (v, k))
                 else:
-                    self.assertAlmostEqual(got[k] / expected, 1.0, places=9, msg=(v, k))
+                    self.assertLessEqual(abs(got[k] / expected - 1.0), tolerance, (v, k))
+
+    def test_refused(self):
+        """Tables with a duplicate, a missing or unusable constant, and values that are not a
+        Huff factor are refused (the same cases are refused in JavaScript)."""
+        refused = self.vectors["refused"]
+        for t in refused["tables"]:
+            with self.assertRaises(ValueError, msg=t["name"]):
+                Physics(t["huff"], t["constants"])
+        for q in refused["huff_factors"]:
+            with self.assertRaises(ValueError, msg=repr(q)):
+                self.physics.convert(14, 28, "lifetime", 756.0, 1.0, "ns", q)
 
 
 if __name__ == "__main__":

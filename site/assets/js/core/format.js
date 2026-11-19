@@ -1,4 +1,4 @@
-// Formatting of values, uncertainties and nuclide names for display.
+// Formatting of values and uncertainties for display.
 
 import { decimals } from './jsonfmt.js';
 
@@ -37,7 +37,8 @@ function digitsFor(x, sig) {
  * A derived (converted) value: rounded so that the uncertainty has two
  * significant digits; four significant digits when there is no uncertainty.
  */
-export function formatDerived(value, uncertainty, sig = 2) {
+export function formatDerived(value, uncertainty) {
+  const sig = 2;
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return { value: '', uncertainty: null, text: '' };
   }
@@ -51,45 +52,4 @@ export function formatDerived(value, uncertainty, sig = 2) {
   const v = value.toFixed(digits);
   const u = uncertainty.toFixed(digits);
   return { value: v, uncertainty: u, text: `${v} ± ${u}` };
-}
-
-/** Plain number for CSV export: six significant digits, no exponent noise. */
-export function plainNumber(x) {
-  if (x === null || x === undefined || !Number.isFinite(x)) return '';
-  return String(Number(x.toPrecision(6)));
-}
-
-/**
- * Mass number used for display and look-ups: a target of natural abundance
- * (mass 0) of an element with a single stable isotope is that isotope.
- */
-export function effectiveMass(z, mass, monoisotopic) {
-  if (mass > 0) return mass;
-  return (monoisotopic && monoisotopic.get(z)) || 0;
-}
-
-/** '28Si', 'natSi' (plain text). */
-export function nuclideText(element, z, mass, monoisotopic) {
-  const a = effectiveMass(z, mass, monoisotopic);
-  return a > 0 ? `${a}${element}` : `nat${element}`;
-}
-
-/** Same with the mass number as superscript (HTML). */
-export function nuclideHtml(element, z, mass, monoisotopic) {
-  const a = effectiveMass(z, mass, monoisotopic);
-  return `<sup>${a > 0 ? a : 'nat'}</sup>${element}`;
-}
-
-export function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-/** RFC 4180 CSV from an array of rows (arrays of cells). */
-export function toCsv(rows) {
-  const cell = (v) => {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return rows.map((r) => r.map(cell).join(',')).join('\n') + '\n';
 }

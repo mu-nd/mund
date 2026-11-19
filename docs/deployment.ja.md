@@ -1,54 +1,58 @@
-# 公開手順(GitHub Pages)
+# 公開の仕組みと手順
 
-サイトは GitHub Actions が自動でビルドし、GitHub Pages で公開します。サーバの管理は不要です。
+## 1. 仕組み
 
 ```
-main に push ─▶ Check     データ検証・テスト
-             └▶ Deploy    サイトをビルド ─▶ GitHub Pages に公開
+push / Pull Request ─▶ check    データの検証とテスト
+main への push       ─▶ check ─▶ build    サイトをビルド ─▶ deploy   GitHub Pages に公開
+                       (検査が通らなければ公開しません)
 ```
 
-公開されるもの:
+`python3 tools/mund.py build` が `_site/` にサイト一式を作ります。
 
-| アドレス | 内容 |
+| パス | 内容 |
 |---|---|
-| `https://niikura-muon.github.io/mund/` | Explorer(`?z=14` で元素を指定) |
-| `…/mund/admin/` | データ入力ツール |
-| `…/mund/data/latest/…`、`…/mund/data/v1/…` | データファイル(JSON / CSV / zip) |
-| `…/mund/schema/v1/…` | JSON Schema |
-| `…/mund/tests/` | 自己テストページ |
+| `/` | Home(周期表、紹介・ニュース・メンバー、引用のしかた。`#about`・`#news`・`#team`・`#cite` で各節へ) |
+| `/explorer/` | データの閲覧(`?z=14` で元素を指定。Home の周期表もここに進む) |
+| `/downloads/`、`/tools/converter/` | ダウンロード、換算(Converter。Docs から入る) |
+| `/docs/…`、`/api/` | 文書と API の説明(`docs/*.md` からビルドのときに作る。貢献者・管理者向けの手順と道具の一覧は `/docs/` の後半) |
+| `/api/<版>/…` | プログラム向けの JSON ファイル(元素・核種・エントリー・出典ごと。`docs/api.md`) |
+| `/db/` | `/explorer/` への転送(プロジェクトサイトの周期表が使っていた `db/?z=14` のアドレスを、同じ条件のまま送る) |
+| `/data/latest/…`、`/data/v1/…` | データファイル(JSON / CSV / zip) |
+| `/schema/v1/…` | JSON Schema |
+| `/tests/` | ブラウザで動くテスト |
 
-## 1. 最初に一度だけ行う設定(リポジトリの管理者)
+- `site/` のファイルがそのまま配信されます(JavaScript のビルド工程はありません)。
+  ビルドが加えるのは、各ページのフォルダー(`site/index.html` を元に作る)、文書のページ、データ(`data/`)、
+  API(`api/`)、スキーマ、テストと、スクリプト・スタイルシートの参照に付ける内容のハッシュ(`?v=…`)です。ハッシュにより、更新後にブラウザが古いスクリプトを使い続けることがありません。
+- `data/latest/` はビルドしたコミット(CI では検査したのと同じコミット)から作られます。
+  `data/vN/` は、リリースのときに一度だけ作って `releases/vN/` に保存した固定版のファイルを、
+  ハッシュを確かめたうえでそのまま配信します(作り直しません。`docs/versioning.md`)。
+- サイトは相対パスだけで作ってあるので、どのアドレス・どの階層に置いても動きます。
+- 外部から読み込むものはありません(書体は端末のものを使います)。
+- データ入力ツール(`admin/`)は公開しません。データを入力する人の PC で動かします(`docs/admin-guide.ja.md`)。
 
-1. **リポジトリを公開(Public)にする。**
-   無料プランの GitHub Pages は公開リポジトリでしか使えません
-   (Settings → General → Danger Zone → Change repository visibility)。
-   非公開の間も Actions はサイトをビルドし、実行結果の Artifact として保存しますが、公開はしません。
-   有料プランで非公開のまま公開したい場合は、Settings → Secrets and variables → Actions →
-   Variables に `DEPLOY_PAGES` = `true` を追加します。
-2. **Pages の配信元を GitHub Actions にする。**
-   Settings → Pages → Build and deployment → Source: **GitHub Actions**
-3. Actions タブで **Deploy** を開き、Run workflow(または main に何か push)。
-   数分で上のアドレスに公開されます。
+## 2. GitHub Pages
 
-## 2. プロジェクトのトップページからリンクする
+リポジトリの Settings → Pages → Build and deployment → Source を **GitHub Actions** にしておくと、
+main への push のたびに `https://mu-nd.github.io/mund/` が更新されます。
 
-`https://ribf.riken.jp/muon/` の周期表は `./db/?z=14` のようなリンクになっています。
-新しい Explorer も同じ `?z=` を受け付けるので、リンクの先頭を置き換えるだけです。
+## 3. `https://ribf.riken.jp/muon/` で公開する
 
-```html
-<!-- 変更前 -->  <a href="./db/?z=14">Si</a>
-<!-- 変更後 -->  <a href="https://niikura-muon.github.io/mund/?z=14">Si</a>
-```
+公開先は `https://ribf.riken.jp/muon/` です。サーバ側で次のどちらかを設定します。
 
-トップページの HTML で `./db/?z=` を `https://niikura-muon.github.io/mund/?z=` に
-一括置換してください。旧 Explorer は不要になります。
+- **転送**: `/muon/` へのアクセスを `https://mu-nd.github.io/mund/` に転送(リバースプロキシ)する。
+  更新は GitHub Pages と同時に反映されます。
+- **配置**: サーバ上でリポジトリを取得してビルドし、出力を `/muon/` の公開ディレクトリに置く。
 
-## 3. 独自ドメインを使う場合(任意)
+  ```sh
+  git pull --tags          # 固定版の検査に履歴とタグを使う
+  pip install -r requirements.txt
+  python3 tools/mund.py build --out /path/to/muon
+  ```
 
-`ribf.riken.jp` の下など別のアドレスで見せたい場合は、DNS に CNAME を設定してもらい、
-Settings → Pages → Custom domain に登録します。サイトは相対パスだけで作ってあるので、
-どのアドレスでもそのまま動きます。あわせて `site/config.json` と
-`schema/v1/*.schema.json` の `$id` を新しいアドレスに直してください。
+  更新のたびにこの手順が必要です(定期実行にできます)。
+
 
 ## 4. ローカルで確認する
 
@@ -56,18 +60,12 @@ Settings → Pages → Custom domain に登録します。サイトは相対パ�
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 python3 tools/mund.py validate        # データの検証
-python3 tools/mund.py serve           # http://localhost:8000/ で Explorer、/admin/ で入力ツール
+python3 tools/mund.py serve           # http://localhost:8000/ にサイト一式
 ```
 
-## 5. 仕組みのメモ
+## 5. 設定を変えるとき
 
-- `tools/mund.py build` が `_site/` を作ります(`site/` のコピー + `schema/` + ビルドしたデータ)。
-- `data/latest/` は現在の main から、`data/vN/` はタグ `vN.0.0` から、そのタグ時点のツールで作られます。
-- JavaScript のビルド工程はありません(`site/` のファイルがそのまま配信されます)。
-  ビルド時に行うのは、スクリプトとスタイルシートの参照に内容のハッシュ(`?v=…`)を付けることだけです。
-  更新直後にブラウザが古いスクリプトと新しいスクリプトを混ぜて読み込むのを防ぐためです。
-  それでも古いページが新しいデータを読んだ場合は、Explorer が自動で再読み込みします。
-  入力ツールの JSON エディタ(Monaco Editor)だけは CDN(cdnjs)から読み込みます。
-  読み込めない場合は簡易エディタに切り替わります。
-- リポジトリ名や公開先を変えたら `site/config.json` の `repository` を直してください
-  (入力ツールの既定の接続先と、Explorer の「変更履歴」リンクに使われます)。
+- リポジトリ名やブランチを変えたら、`site/config.json` の `repository`・`branch` を直します
+  (データベースのページの「変更履歴」などのリンクに使われます)。
+- 公開先のアドレスを変えたら、`schema/v1/*.schema.json` の `$id`、`CITATION.cff` の `url`、
+  `README.md` のアドレスを直します。

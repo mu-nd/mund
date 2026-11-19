@@ -1,11 +1,13 @@
 // A small JSON Schema validator and the schema-driven normalisation.
 //
-// It implements exactly the keywords used by schema/v1/*.schema.json:
+// It implements exactly the keywords used by schema/v1/*.schema.json, and
+// throws on any other one:
 //   $ref (local), type, const, enum, required, properties, additionalProperties: false,
 //   items, pattern, minLength, minimum, maximum, exclusiveMinimum, minItems, uniqueItems,
 //   allOf, if / then / else, not
-// CI validates the same files with the reference implementation (Python
-// `jsonschema`); tests/vectors/cases.json keeps the two in agreement.
+// The automatic checks validate the same files with the reference
+// implementation (Python `jsonschema`); tests/vectors/cases.json keeps the two
+// in agreement.
 
 import { getLexeme, setLexeme } from './jsonfmt.js';
 
@@ -46,11 +48,6 @@ function matchesType(value, type) {
 const show = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 
 function check(value, schemaIn, root, path, errors) {
-  if (schemaIn === true) return;
-  if (schemaIn === false) {
-    errors.push({ pointer: pointer(path), keyword: 'false', message: 'this member is not allowed' });
-    return;
-  }
   // keywords next to $ref (description ...) are annotations in our schemas
   const schema = resolve(schemaIn, root);
   const at = pointer(path);
@@ -131,10 +128,7 @@ function check(value, schemaIn, root, path, errors) {
   if ('not' in schema) {
     const probe = [];
     check(value, schema.not, root, path, probe);
-    if (probe.length === 0) {
-      const empty = schema.not && typeof schema.not === 'object' && !Object.keys(schema.not).length;
-      add('not', empty ? 'this member is not allowed for this dataset type' : 'value is not allowed');
-    }
+    if (probe.length === 0) add('not', 'this member is not allowed here');
   }
 }
 

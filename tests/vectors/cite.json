@@ -1,0 +1,13 @@
+{
+  "description": "File labels and citation texts derived from a bibliography entry (reference null: no entry).",
+  "cases": [
+    {"meta": {"bibId": "10.1103/PhysRevC.35.2212"}, "reference": {"DOI": "10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"}, {"family": "Roalsvig"}], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}}, "fileLabel": "Suzuki1987", "citeText": "Suzuki et al., Phys. Rev. C 35, 2212 (1987)"},
+    {"meta": {"bibId": "10.1103/PhysRevC.35.2212"}, "reference": {"DOI": "10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"}, {"family": "Roalsvig"}], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}, "article-number": "024307"}, "fileLabel": "Suzuki1987", "citeText": "Suzuki et al., Phys. Rev. C 35, 024307 (1987)"},
+    {"meta": {"bibId": "10.1234/x"}, "reference": {"author": [{"family": "Kálmán"}, {"family": "Ng"}], "container-title": ["Some Journal"], "published": {"date-parts": [[2025, 3]]}}, "fileLabel": "Kalman2025", "citeText": "Kálmán and Ng, Some Journal (2025)"},
+    {"meta": {"bibId": "10.1234/x"}, "reference": {"author": [{"family": "de Groot"}]}, "fileLabel": "deGroot", "citeText": "de Groot"},
+    {"meta": {"bibId": "10.1234/x"}, "reference": {"author": [{"name": "MuX Collaboration"}], "published": {"date-parts": [[2024]]}}, "fileLabel": "MuXCollaboration2024", "citeText": "MuX Collaboration (2024)"},
+    {"meta": {"bibId": "10.1000/unpublished"}, "reference": null, "fileLabel": "unpublished", "citeText": "10.1000/unpublished"},
+    {"meta": {"bibId": "10.1016/0375-9474(88)90330-2"}, "reference": null, "fileLabel": "0375947488903302", "citeText": "10.1016/0375-9474(88)90330-2"},
+    {"meta": {"bibId": "10.1000/mund.x"}, "reference": {"title": ["A report"]}, "fileLabel": "mundx", "citeText": "A report"}
+  ]
+}

@@ -1,7 +1,6 @@
 {
   "format": "muND/huff-factors/1",
   "description": "Huff factor Q: reduction of the decay rate of a muon bound in the 1s orbit, Lambda_decay = Q / tau(mu+). by_nuclide is used when the mass number is known, by_element otherwise; Q = 1 is assumed when neither has an entry.",
-  "source": "Table used by the previous muND explorer.",
   "by_element": [
     {"z": 6, "q": 0.9989},
     {"z": 7, "q": 0.9984},

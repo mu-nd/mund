@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://niikura-muon.github.io/mund/schema/v1/facilities.schema.json",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/facilities.schema.json",
   "title": "muND facility list",
   "description": "Master list of muon facilities and beam lines. Metadata records refer to an entry by its 'abbr'.",
   "type": "object",

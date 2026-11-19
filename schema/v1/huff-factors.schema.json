@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/huff-factors.schema.json",
+  "title": "muND Huff factors",
+  "description": "Huff factor Q of the muon bound in the 1s orbit (decay rate Q / tau(mu+)), used to convert between lifetime, capture rate and capture probability.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/huff-factors/1"},
+    "description": {"type": "string"},
+    "source": {"type": "string", "minLength": 1, "description": "Where the values come from (literature reference)."},
+    "by_element": {
+      "type": "array",
+      "description": "Q of an element, used when the mass number is 0 (natural abundance) or not tabulated.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "z": {"type": "integer", "minimum": 1},
+          "q": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+        },
+        "required": ["z", "q"],
+        "additionalProperties": false
+      }
+    },
+    "by_nuclide": {
+      "type": "array",
+      "description": "Q of a nuclide.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "z": {"type": "integer", "minimum": 1},
+          "a": {"type": "integer", "minimum": 1},
+          "q": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+        },
+        "required": ["z", "a", "q"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["format", "by_element", "by_nuclide"],
+  "additionalProperties": false
+}

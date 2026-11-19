@@ -1,21 +1,14 @@
-"""Deterministic identifiers (MetaID / DataID).
-
-Definition (see ``docs/id-definition.md``).  The rule is a pure string
-definition and does not depend on this implementation:
+"""MetaID and DataID (definition: ``docs/id-definition.md``).
 
     MetaID = first 12 hex digits of SHA-256( UTF-8( meta_source ) )
     DataID = first 12 hex digits of SHA-256( UTF-8( data_source ) )
 
-    meta_source = "LT|{DataSet}-META|{doi_norm}[|{key_norm}]"
-    data_source = "LT|{DataSet}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
+    meta_source = "LT|{code}-META|{doi_norm}[|{key_norm}]"
+    data_source = "LT|{code}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
 
-``[...]`` marks a part that is appended only when a key is given.  Values and
-uncertainties are deliberately *not* part of the identifier, so correcting a
-number does not change the ID.
-
-The rule is confirmed for the LT sub-library only.  The ``sublibrary`` argument
-exists so that the same code can be reused once the other sub-libraries have a
-confirmed definition.
+``[...]`` is appended only when a key is given; ``code`` is EXP, TH, CUR or
+EVAL.  Values and uncertainties are not part of an identifier.  The rule is
+defined for the LT sub-library, whose name is the first part of the source.
 """
 from __future__ import annotations
 
@@ -59,27 +52,27 @@ def normalize_mass(mass) -> str:
     return str(int((d * 1000).to_integral_value(rounding=ROUND_HALF_UP)))
 
 
-def meta_source(sublibrary: str, dataset: str, doi: str, key: Optional[str] = None) -> str:
-    parts = [sublibrary, dataset + "-META", normalize_doi(doi)]
+def meta_source(sublibrary: str, code: str, doi: str, key: Optional[str] = None) -> str:
+    parts = [sublibrary, code + "-META", normalize_doi(doi)]
     k = normalize_key(key)
     if k:
         parts.append(k)
     return SEPARATOR.join(parts)
 
 
-def data_source(sublibrary: str, dataset: str, element: str, mass, meta_id: str,
+def data_source(sublibrary: str, code: str, element: str, mass, meta_id: str,
                 key: Optional[str] = None) -> str:
-    parts = [sublibrary, dataset, normalize_element(element), normalize_mass(mass), meta_id]
+    parts = [sublibrary, code, normalize_element(element), normalize_mass(mass), meta_id]
     k = normalize_key(key)
     if k:
         parts.append(k)
     return SEPARATOR.join(parts)
 
 
-def meta_id(sublibrary: str, dataset: str, doi: str, key: Optional[str] = None) -> str:
-    return _hash12(meta_source(sublibrary, dataset, doi, key))
+def meta_id(sublibrary: str, code: str, doi: str, key: Optional[str] = None) -> str:
+    return _hash12(meta_source(sublibrary, code, doi, key))
 
 
-def data_id(sublibrary: str, dataset: str, element: str, mass, meta_id: str,
+def data_id(sublibrary: str, code: str, element: str, mass, meta_id: str,
             key: Optional[str] = None) -> str:
-    return _hash12(data_source(sublibrary, dataset, element, mass, meta_id, key))
+    return _hash12(data_source(sublibrary, code, element, mass, meta_id, key))

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/constants.schema.json",
+  "title": "muND physical constants",
+  "description": "Physical constants used by the conversions. mu_plus_lifetime (ns) is required.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/constants/1"},
+    "constants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "value": {"type": "number"},
+          "unit": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1}
+        },
+        "required": ["name", "value", "unit", "description", "source"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["format", "constants"],
+  "additionalProperties": false
+}

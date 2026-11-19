@@ -7,7 +7,7 @@ message: >-
 type: dataset
 authors:
   - name: "muND Project Team"
-repository-code: "https://github.com/niikura-muon/mund"
+repository-code: "https://github.com/mu-nd/mund"
 url: "https://ribf.riken.jp/muon/"
 preferred-citation:
   type: article

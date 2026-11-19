@@ -25,7 +25,8 @@
 <script type="module">
 import { Harness } from './harness.js';
 import { register } from './suite.js';
-import { core } from './core.js';
+import { register as registerExplorer } from './suite-explorer.js';
+import { modules } from './modules.js';
 
 const cache = new Map();
 async function fetchText(url) {
@@ -37,10 +38,9 @@ async function fetchText(url) {
   }
   return cache.get(url);
 }
-const base = { vectors: './vectors/', schema: '../schema/v1/', master: '../data/latest/raw/master/' };
+const base = { vectors: './vectors/', schema: '../schema/v1/' };
 const env = {
   text: (kind, name) => fetchText(base[kind] + name),
-  fakeGitHub: () => import('./fake-github.js'),
   async dataFiles() {
     const manifest = JSON.parse(await fetchText('../data/latest/manifest.json'));
     const raw = manifest.files.filter((f) => f.path.startsWith('raw/'));
@@ -51,7 +51,8 @@ const env = {
 };
 
 const h = new Harness();
-register(h, core, env);
+register(h, modules, env);
+registerExplorer(h, modules, env);
 const list = document.getElementById('results');
 const results = await h.run((r) => {
   const li = document.createElement('li');
@@ -72,7 +73,6 @@ summary.textContent = failed
   : `All ${results.length} tests passed (${checks} checks).`;
 summary.className = failed ? 'fail' : 'pass';
 document.title = `${failed ? 'FAIL' : 'PASS'} - muND self-test`;
-window.__mundTestResults = { failed, total: results.length, checks, results };
 </script>
 </body>
 </html>

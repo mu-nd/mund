@@ -16,7 +16,7 @@ const K = new Uint32Array([
 const rotr = (x, n) => (x >>> n) | (x << (32 - n));
 
 /** SHA-256 of a byte array, as a lower-case hexadecimal string. */
-export function sha256Bytes(bytes) {
+function sha256Bytes(bytes) {
   const length = bytes.length;
   const padded = new Uint8Array((((length + 8) >> 6) + 1) << 6);
   padded.set(bytes);

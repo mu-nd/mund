@@ -3,28 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>muND explorer – Muon Nuclear Data</title>
-<meta name="description" content="Explorer of the Muon Nuclear Data (μND) library: lifetimes of muonic atoms and nuclear capture rates, with experimental, curated and evaluated data.">
+<title>Muon Nuclear Data</title>
+<meta name="description" content="Muon Nuclear Data (muND): a nuclear database for muon-induced nuclear reactions. Lifetimes of muonic atoms and nuclear capture rates, with experimental, curated and evaluated data.">
 <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/explorer.css">
 <link rel="modulepreload" href="assets/js/explorer/main.js">
+<!-- the dark colours, if the reader chose them before (main.js, footer) -->
+<script>try { if (localStorage.getItem('mund-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}</script>
 </head>
-<body>
+<!-- Home, and the template of every page of the site: the build makes the
+     other pages (explorer/, docs/ …) from this file (tools/mundlib/pages.py). -->
+<body data-page="">
 <header class="site-header">
   <div class="bar">
-    <a class="brand" href="./"><strong>μND</strong><span>Muon Nuclear Data</span></a>
+    <a class="brand" href="./">Muon Nuclear Data</a>
     <nav class="site-nav" id="nav" aria-label="Pages"></nav>
-    <span class="spacer"></span>
-    <div id="version" class="version-box"></div>
   </div>
 </header>
 <main class="page" id="main">
-  <p class="muted" id="loading">Loading the data …</p>
-  <noscript><p class="notice warn">The explorer needs JavaScript. The data themselves are plain files:
-    see <a href="data/latest/manifest.json">data/latest/manifest.json</a>.</p></noscript>
+  <p class="muted" id="loading">Loading …</p>
+  <noscript><p class="notice warn">These pages need JavaScript. The data themselves are plain files:
+    see <a href="data/latest/manifest.json">data/latest/manifest.json</a> and the <a href="docs/">documentation</a>.</p></noscript>
 </main>
-<footer class="site-footer"><div class="bar" id="footer"></div></footer>
+<footer class="site-footer">
+  <div class="bar">
+    <span>© Copyright <strong>Transmutation data research group, RIKEN Nishina Center</strong> All Rights Reserved</span>
+    <span class="links" id="footer"></span>
+  </div>
+</footer>
 <script type="module" src="assets/js/explorer/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://niikura-muon.github.io/mund/schema/v1/bibliography.schema.json",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/bibliography.schema.json",
   "title": "muND bibliography",
   "description": "Bibliographic data of the references, found through their DOI (bibId). Entries are a cached subset of the Crossref record of the DOI and use Crossref's member names; a source without DOI gets a hand-made entry of the same shape under its placeholder DOI.",
   "type": "object",

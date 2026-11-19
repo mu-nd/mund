@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ribf.riken.jp/muon/schema/v1/nuclides.schema.json",
+  "title": "muND nuclide tables",
+  "description": "Element symbols, the mass numbers offered for each element, and the elements with a single stable isotope.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/nuclides/1"},
+    "description": {"type": "string"},
+    "elements": {
+      "type": "array",
+      "description": "Element symbols; index + 1 = atomic number Z.",
+      "items": {"type": "string", "pattern": "^[A-Z][a-z]?$"},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "isotope_ranges": {
+      "type": "array",
+      "description": "Smallest and largest mass number offered for an element; validation warns about mass numbers far outside.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "z": {"type": "integer", "minimum": 1},
+          "a_min": {"type": "integer", "minimum": 1},
+          "a_max": {"type": "integer", "minimum": 1}
+        },
+        "required": ["z", "a_min", "a_max"],
+        "additionalProperties": false
+      }
+    },
+    "monoisotopic": {
+      "type": "array",
+      "description": "Elements with a single stable isotope: a target of natural abundance is that nuclide.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "z": {"type": "integer", "minimum": 1},
+          "a": {"type": "integer", "minimum": 1}
+        },
+        "required": ["z", "a"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["format", "elements", "isotope_ranges", "monoisotopic"],
+  "additionalProperties": false
+}

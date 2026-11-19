@@ -35,7 +35,7 @@ export function h(tag, attrs, ...children) {
   return el;
 }
 
-export function append(el, children) {
+function append(el, children) {
   for (const child of children) {
     if (child === null || child === undefined || child === false) continue;
     if (Array.isArray(child)) append(el, child);
@@ -55,6 +55,43 @@ export function replace(el, ...children) {
   return append(el, children);
 }
 
+/** A link to another site, opened in a new tab. */
+export function externalLink(href, ...children) {
+  return h('a', { href, target: '_blank', rel: 'noopener' }, children);
+}
+
+/** The head of a card: its title (a text becomes an <h2>) and, on the right, optional controls. */
+export function cardHead(title, ...controls) {
+  return h('div', { class: 'card-head' }, typeof title === 'string' ? h('h2', null, title) : title, controls);
+}
+
+/**
+ * A segmented switch: one of a few choices, the chosen one raised (.seg).
+ * @param label     what is chosen, for screen readers
+ * @param choices   [{ value, text, title? }]
+ * @param chosen    the value chosen at first
+ * @param onchoose  called with the value of a click
+ */
+export function segSwitch(label, choices, chosen, onchoose) {
+  const box = h('div', { class: 'seg', role: 'group', 'aria-label': label });
+  const draw = () => replace(box, choices.map(({ value, text, title = null }) => h('button', {
+    type: 'button', title, 'aria-pressed': String(value === chosen),
+    onclick: () => { chosen = value; draw(); onchoose(value); },
+  }, text)));
+  draw();
+  return box;
+}
+
+/** A card: its head (see cardHead) and its content. */
+export function card({ title, controls = null, class: extra = null, id = null }, ...content) {
+  return h('section', { class: extra ? `card ${extra}` : 'card', id }, cardHead(title, controls), content);
+}
+
+/** The title of a page, with controls on the right (the version of the data …). */
+export function pageHeading(title, ...controls) {
+  return h('div', { class: 'heading-row' }, h('h1', null, title), h('span', { class: 'spacer' }), controls);
+}
+
 /** Nuclide name with the mass number as superscript: <sup>28</sup>Si. */
 export function nuclideNode(element, a) {
   return h('span', { class: 'nuclide' }, h('sup', null, a > 0 ? String(a) : 'nat'), element);
@@ -68,22 +105,4 @@ export function downloadText(filename, text, type = 'text/plain') {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export async function fetchText(url) {
-  const response = await fetch(url, { cache: 'no-cache' });
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-  return response.text();
-}
-
-export async function fetchJson(url) {
-  return JSON.parse(await fetchText(url));
-}
-
-export function debounce(fn, ms = 200) {
-  let timer = null;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
 }
