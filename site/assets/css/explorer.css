@@ -24,13 +24,17 @@ body.scrolled .site-header { box-shadow: var(--header-shadow); }
 .card-head .version-bar, .heading-row .version-bar { margin: 0; }
 
 /* ---- periodic table + chart --------------------------------------------- */
-.explorer-top { display: grid; grid-template-columns: minmax(0, 13fr) minmax(0, 12fr); gap: 16px; align-items: start; }
+.explorer-top { display: grid; grid-template-columns: minmax(0, 13fr) minmax(0, 12fr); gap: 16px; }
 @media (max-width: 1020px) { .explorer-top { grid-template-columns: minmax(0, 1fr); } }
+/* side by side, the two cards are as high as each other; the periodic table stays in the middle of its card */
+.explorer-top > div > .ptable-card { height: 100%; display: flex; flex-direction: column; }
+.ptable-card > .card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 
+.ptable-wrap { position: relative; container-type: inline-size; --pt-gap: 2px; }
 .ptable {
   display: grid; grid-template-columns: repeat(18, minmax(0, 1fr));
   grid-template-rows: repeat(7, auto) 8px repeat(2, auto);
-  gap: 2px;
+  gap: var(--pt-gap);
 }
 .pt-cell {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -50,16 +54,26 @@ body.scrolled .site-header { box-shadow: var(--header-shadow); }
 .pt-mark.CUR { background: var(--ds-cur); border-radius: 1px; }
 .pt-mark.EVAL { background: var(--ds-eval); border-radius: 0; transform: rotate(45deg) scale(0.85); }
 .pt-cell.selected .pt-mark { background: var(--accent-ink); }
-/* the key: a switch (pill) for each kind of data; switched off, its mark fades as in the table */
-.ptable-key { margin: 10px 0 0; }
+/* the key: a switch (pill) for each kind of data, all of one width; switched off, its mark fades as
+   in the table.  It sits in the empty space of the table above the transition metals (columns 3-12,
+   rows 1-3; a cell is (width - 17 gaps) / 18 wide and as high), two by two or in one row; where that
+   space is too small (phones), below the table. */
+.ptable-key { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; width: max-content; margin: 10px auto 0; }
+.ptable-key .pill { justify-content: center; min-height: 28px; padding: 3px 10px; font-size: 0.8rem; }
 .ptable-key .pill[aria-pressed="false"] .ds-dot { opacity: 0.3; }
+@container (min-width: 470px) {
+  .ptable-key {
+    --cell: calc((100cqw - 17 * var(--pt-gap)) / 18);
+    position: absolute; margin: 0; transform: translate(-50%, -50%);
+    left: calc(7 * var(--cell) + 6.5 * var(--pt-gap)); top: calc(1.5 * var(--cell) + var(--pt-gap));
+  }
+}
+@container (min-width: 920px) { .ptable-key { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 640px) {
   .pt-z, .pt-marks { display: none; }
   .pt-sym { font-size: 9px; }
-  .ptable { gap: 1px; }
+  .ptable-wrap { --pt-gap: 1px; }
   .ptable-card .card-body { padding: 10px 8px; }
-  .ptable-key { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }    /* two by two, of one width */
-  .ptable-key .pill { justify-content: center; }
 }
 
 /* ---- chart ---------------------------------------------------------------- */

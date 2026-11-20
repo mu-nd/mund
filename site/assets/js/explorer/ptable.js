@@ -106,11 +106,12 @@ export function periodicTableCard({
     // the switch pressed from the keyboard keeps the focus when the card is drawn again
     if (event.detail === 0) document.querySelector(`.ptable-key [data-kind="${d}"]`).focus();
   };
+  // the key sits in the empty space of the table when it fits there (explorer.css)
   return card({ title: 'Choose an element', controls: versionChoice, class: 'ptable-card' },
-    h('div', { class: 'card-body' }, grid,
-      h('div', { class: 'ptable-key pills small', role: 'group', 'aria-label': 'Kinds of data marked in the table' },
+    h('div', { class: 'card-body' }, h('div', { class: 'ptable-wrap' }, grid,
+      h('div', { class: 'ptable-key', role: 'group', 'aria-label': 'Kinds of data marked in the table' },
         CODES.map((d) => h('button', {
           class: 'pill', type: 'button', dataset: { kind: d }, 'aria-pressed': String(kinds.has(d)), onclick: (event) => toggle(d, event),
           title: `${kinds.has(d) ? 'Hide' : 'Show'} the ${CODE_TITLES[d].toLowerCase()} data`,
-        }, h('i', { class: `ds-dot ${d}` }), CODE_TITLES[d])))));
+        }, h('i', { class: `ds-dot ${d}` }), CODE_TITLES[d]))))));
 }
