@@ -39,7 +39,7 @@
   --ds-eval: #212529;
 }
 
-/* the dark colours, when the reader chooses them (the switch in the footer) */
+/* the dark colours, when the reader chooses them (the switch in the header) */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --page: #0e1117;
@@ -248,9 +248,14 @@ pre.code {
 main.page { max-width: var(--container); margin: 0 auto; padding: 20px 16px 56px; }
 .site-footer { border-top: 1px solid var(--border); color: var(--ink-3); font-size: 0.85rem; }
 .site-footer .bar { max-width: var(--container); margin: 0 auto; padding: 16px; display: flex; gap: 6px 20px; flex-wrap: wrap; }
-.site-footer .links { display: contents; }
 .site-footer a { color: var(--ink-2); }
-.theme-switch { padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* a button or link that is an icon only (core/icons.js): the header, the copy button of the citations */
+.icon-button {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 6px; background: none; color: var(--ink-2); cursor: pointer;
+}
+.icon-button:hover { color: var(--accent); }
+.site-tools { display: flex; gap: 2px; }
 
 @media (max-width: 640px) {
   body { font-size: 14px; }

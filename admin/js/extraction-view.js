@@ -13,12 +13,15 @@
 import { h, replace, nuclideNode } from '../../site/assets/js/core/dom.js';
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
 import { CODES, TYPE_OF } from '../../site/assets/js/core/vocabulary.js';
+import { bibKind } from '../../site/assets/js/core/cite.js';
 import { UNIT_LABELS } from '../../site/assets/js/core/convert.js';
 import { T, problemText } from './i18n.js';
 import { jsonPane } from './monaco.js';
 import { savePanel, issueList } from './save.js';
 import { InvalidError } from './backend.js';
 import * as ex from './extraction.js';
+import { sourceText } from './document.js';
+import { SOURCE_HINT } from './reference.js';
 
 const STORE_DELAY_MS = 300;
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -231,7 +234,8 @@ function taskList(root, ctx) {
     const tid = form.id.trim();
     if (!ex.TASK_ID_RE.test(tid)) { toast(T('タスク名は英数字と . _ - で付けてください(例 Suzuki1987)', 'A task name consists of letters, digits, . _ - (e.g. Suzuki1987)'), 'bad'); return; }
     if (workspace.text(ex.taskPath(tid, 'task.json')) !== null) { toast(T('同じ名前のタスクがあります', 'A task of this name exists'), 'bad'); return; }
-    if (!/^10\.[0-9]{4,9}\/[^\s;]+$/.test(form.bibId.trim())) { toast(T('DOI を入力してください(https://doi.org/ は付けない)', 'Enter the DOI (without https://doi.org/)'), 'bad'); return; }
+    form.bibId = sourceText(form.bibId);
+    if (!bibKind(form.bibId)) { toast(SOURCE_HINT(), 'bad'); return; }
     if (!form.version.trim()) { toast(T('読んだ版を入力してください', 'Say which version was read'), 'bad'); return; }
     if (!form.file) { toast(T('PDF を選んでください', 'Choose the PDF'), 'bad'); return; }
     status.textContent = T('PDF を読み込み中…', 'Reading the PDF …');
@@ -262,7 +266,7 @@ function taskList(root, ctx) {
       h('div', { class: 'card-body stack' },
         h('div', { class: 'form-cols' },
           field(T('タスク名', 'Task name'), input('', (v) => { form.id = v; }, { placeholder: 'Suzuki1987' }), T('英数字と . _ -。extraction/ の下のフォルダ名になります', 'Letters, digits, . _ -; the folder under extraction/')),
-          field('DOI', input('', (v) => { form.bibId = v; }, { placeholder: '10.1103/PhysRevC.35.2212' })),
+          field(T('文献', 'Source'), input('', (v) => { form.bibId = v; }, { placeholder: 'DOI:10.1103/PhysRevC.35.2212' }), SOURCE_HINT()),
           field(T('読んだ版', 'Version read'), input('', (v) => { form.version = v; }, { placeholder: T('出版社版 / arXiv:2501.05897v2 など', 'journal version / arXiv:2501.05897v2 …') })),
           field('PDF', pdf, T('PDF はこのコンピュータにだけ置かれ、保存・送信されません。SHA-256 と大きさだけが記録されます。', 'The PDF stays on this computer and is never saved or sent; only its SHA-256 and size are recorded.')),
           field(T('登録するデータの種別', 'Kind of data to register'), select(CODES.map((c) => [c, c]), form.code, (v) => { form.code = v; }),
@@ -397,7 +401,7 @@ function taskPage(root, ctx, id, view) {
           frozen ? h('p', { class: 'notice warn' }, T('提出済みの入力があります。文献・PDF・表の一覧を変えると、提出済みの入力と合わなくなり保存できません。',
             'An input is submitted: changing the source, the PDF or the list of items no longer fits it, and is refused when saving.')) : null,
           h('div', { class: 'form-cols' },
-            field('DOI', input(task.source.bibId, (v) => { task.source.bibId = v.trim(); put('task.json', task); })),
+            field(T('文献', 'Source'), input(task.source.bibId, (v) => { task.source.bibId = sourceText(v); put('task.json', task); })),
             field(T('読んだ版', 'Version read'), input(task.source.version, (v) => { task.source.version = v; put('task.json', task); })),
             h('div', { class: 'field wide' },
               h('p', { class: 'mono small' }, `SHA-256 ${task.source.sha256} · ${task.source.size} bytes`),

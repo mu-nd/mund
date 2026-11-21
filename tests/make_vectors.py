@@ -30,13 +30,13 @@ from mundlib.convert import Physics  # noqa: E402
 from mundlib.database import canonical_text, entry_hash, file_path  # noqa: E402
 
 N = jsonfmt.loads
-SUZUKI = {"DOI": "10.1103/PhysRevC.35.2212", "type": "journal-article",
+SUZUKI = {"id": "DOI:10.1103/PhysRevC.35.2212", "type": "journal-article",
           "author": [{"family": "Suzuki", "given": "T."}],
           "title": ["Total nuclear capture rates"], "short-container-title": ["Phys. Rev. C"],
           "volume": "35", "page": "2212", "published": {"date-parts": [[1987]]}}
-TEST_REF = {"DOI": "10.1000/test", "title": ["A test"], "published": {"date-parts": [[2026]]}}
-TH_REF = {"DOI": "10.1000/th", "title": ["A theory"], "published": {"date-parts": [[2026]]}}
-CUR_REF = {"DOI": "10.1000/cur", "title": ["A curation"], "published": {"date-parts": [[2026]]}}
+TEST_REF = {"id": "DOI:10.1000/test", "title": ["A test"], "published": {"date-parts": [[2026]]}}
+TH_REF = {"id": "DOI:10.1000/th", "title": ["A theory"], "published": {"date-parts": [[2026]]}}
+CUR_REF = {"id": "DOI:10.1000/cur", "title": ["A curation"], "published": {"date-parts": [[2026]]}}
 
 
 def fixture_text(rel: str) -> str:
@@ -58,7 +58,7 @@ def row(element, mass, kind="lifetime", value="756.0", unit="ns", total="1.0", *
 def exp_doc():
     return {
         "format": "muND/LT/1", "sublibrary": "LT", "datasetType": "experiment",
-        "meta": {"bibId": "10.1103/PhysRevC.35.2212", "facility": "TRIUMF (M20)", "method": "electron"},
+        "meta": {"bibId": "DOI:10.1103/PhysRevC.35.2212", "facility": "TRIUMF (M20)", "method": "electron"},
         "data": [
             row("Si", 28),
             row("Al", 27, value="864.0", key="plate"),
@@ -67,12 +67,12 @@ def exp_doc():
     }
 
 
-def other_doc(dataset_type, doi="10.1000/test", originals=None):
+def other_doc(dataset_type, bib_id="DOI:10.1000/test", originals=None):
     r = row("Si", 28, "capture_rate", "0.8926", "us-1", "0.0090")
     if originals:
         r["originalData"] = originals
     return {"format": "muND/LT/1", "sublibrary": "LT", "datasetType": dataset_type,
-            "meta": {"bibId": doi}, "data": [r]}
+            "meta": {"bibId": bib_id}, "data": [r]}
 
 
 def orig(dataset_id, hash_="000000000000"):
@@ -93,7 +93,7 @@ def with_ids(doc):
     return doc
 
 
-REFERENCES = {r["DOI"]: r for r in (SUZUKI, TEST_REF, TH_REF, CUR_REF)}
+REFERENCES = {r["id"]: r for r in (SUZUKI, TEST_REF, TH_REF, CUR_REF)}
 BIB_PATH = "data/master/bibliography.json"
 
 
@@ -143,7 +143,7 @@ def build_cases():
     case("valid experiment file", [entry(exp_doc())], [])
     case("valid curated file that refers to experimental data",
          [entry(exp_doc()), entry(other_doc("curated", originals=[orig(exp_id, exp_hash)]))], [])
-    case("valid evaluated and theory files", [entry(other_doc("evaluated")), entry(other_doc("theory", "10.1000/th"))], [])
+    case("valid evaluated and theory files", [entry(other_doc("evaluated")), entry(other_doc("theory", "DOI:10.1000/th"))], [])
 
     d = exp_doc(); d["data"][0]["observable"]["lifetime"]["uncertainties"] = [
         {"source": "statistical", "value": N("0.8")}, {"source": "systematic", "value": N("0.7")}]
@@ -191,7 +191,7 @@ def build_cases():
 
     ev = with_ids(other_doc("evaluated"))
     case("curated refers to data that is not experimental",
-         [entry(other_doc("curated", "10.1000/cur", originals=[orig(ev["data"][0]["datasetId"])])), entry(other_doc("evaluated"))],
+         [entry(other_doc("curated", "DOI:10.1000/cur", originals=[orig(ev["data"][0]["datasetId"])])), entry(other_doc("evaluated"))],
          [E("E_ORIGINAL_NOT_EXP", "/data/0/originalData/0", 0)])
 
     d = exp_doc(); d["data"][0]["originalData"] = [orig(exp_id)]
@@ -207,7 +207,7 @@ def build_cases():
     f = entry(exp_doc()); f["path"] = f["path"].replace("/EXP/", "/CUR/")
     case("file stored in the wrong directory", [f], [E("E_PATH")])
 
-    f = entry(exp_doc()); f["path"] = "data/LT/EXP/96f2c4a2ddaf.json"
+    f = entry(exp_doc()); f["path"] = "data/LT/EXP/%s.json" % with_ids(exp_doc())["meta"]["id"]
     case("file name without label", [f], [E("E_PATH")])
 
     a = entry(exp_doc())
@@ -236,19 +236,31 @@ def build_cases():
     case("bibliographic information missing", [entry(exp_doc())], [W("W_NO_REFERENCE", "/meta/bibId")],
          bib=bibliography(TEST_REF))
 
-    case("placeholder DOI without bibliographic information", [entry(other_doc("evaluated", "10.1000/mund.test"))], [],
+    case("muND key without bibliographic information", [entry(other_doc("evaluated", "muND:test"))], [],
          bib=bibliography(SUZUKI))
 
-    case("reference listed twice", [entry(exp_doc())], [E("E_DUPLICATE_REFERENCE", "/references/1/DOI", 1)],
-         bib=bibliography(SUZUKI, dict(SUZUKI, DOI="10.1103/physrevc.35.2212")))
+    case("NSR keynumber without bibliographic information", [entry(other_doc("evaluated", "NSR:1987SU06"))],
+         [W("W_NO_REFERENCE", "/meta/bibId")], bib=bibliography(SUZUKI))
+
+    case("NSR keynumber with bibliographic information", [entry(other_doc("evaluated", "NSR:1987SU06"))], [],
+         bib=bibliography(SUZUKI, {"id": "NSR:1987su06", "title": ["Total nuclear capture rates for negative muons"]}))
+
+    case("bibliography entry without id", [entry(exp_doc())], [E("E_SCHEMA", "/references/1", 1)],
+         bib=bibliography(SUZUKI, {"title": ["A report"]}))
+
+    case("reference listed twice", [entry(exp_doc())], [E("E_DUPLICATE_REFERENCE", "/references/1/id", 1)],
+         bib=bibliography(SUZUKI, dict(SUZUKI, id="DOI:10.1103/physrevc.35.2212")))
 
     d = exp_doc(); d["meta"]["key"] = "a|b"
     case("key contains the separator", [entry(d)], [E("E_SCHEMA", "/meta/key")])
 
     d = exp_doc(); d["meta"]["bibId"] = "https://doi.org/10.1103/PhysRevC.35.2212"
-    case("DOI given as URL", [entry(d)], [E("E_SCHEMA", "/meta/bibId"), W("W_NO_REFERENCE", "/meta/bibId")])
+    case("DOI given as URL", [entry(d)], [E("E_SCHEMA", "/meta/bibId")])    # not a bibId: no look-up in the bibliography
 
-    d = other_doc("theory", "10.1000/th"); d["data"][0]["observable"] = quantity("capture_probability", "120", "%")
+    d = exp_doc(); d["meta"]["bibId"] = "10.1103/PhysRevC.35.2212"
+    case("DOI without its prefix", [entry(d)], [E("E_SCHEMA", "/meta/bibId")])
+
+    d = other_doc("theory", "DOI:10.1000/th"); d["data"][0]["observable"] = quantity("capture_probability", "120", "%")
     case("capture probability above 100 %", [entry(d)], [E("E_SCHEMA", "/data/0/observable/capture_probability/value")])
 
     d = exp_doc(); d["data"][0]["observable"]["lifetime"]["value"] = N("0")
@@ -259,7 +271,7 @@ def build_cases():
     case("empty optional member", [entry(exp_doc(), text=text)],
          [E("E_CANONICAL"), E("E_SCHEMA", "/data/0/comment")])
 
-    f = entry(exp_doc()); f["path"] = "data/BR/EXP/Suzuki1987_96f2c4a2ddaf.json"
+    f = entry(exp_doc()); f["path"] = f["path"].replace("data/LT/", "data/BR/")
     case("sub-library without a defined format", [f], [E("E_SUBLIBRARY_UNDEFINED")])
 
     d = exp_doc(); d["data"][0]["nuclide"]["mass"] = N("27.5")
@@ -407,23 +419,24 @@ def build_refused():
 
 def build_cite():
     """(meta, reference) -> file label and citation text, expectations by hand."""
-    three = {"DOI": "10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"},
+    three = {"id": "DOI:10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"},
              {"family": "Roalsvig"}], "container-title": ["Physical Review C"],
              "short-container-title": ["Phys. Rev. C"], "volume": "35", "page": "2212-2224",
              "published": {"date-parts": [[1987, 6, 1]]}}
     cases = [
-        ({"bibId": three["DOI"]}, three, "Suzuki1987", "Suzuki et al., Phys. Rev. C 35, 2212 (1987)"),
-        ({"bibId": three["DOI"]}, dict(three, **{"article-number": "024307"}),
+        ({"bibId": three["id"]}, three, "Suzuki1987", "Suzuki et al., Phys. Rev. C 35, 2212 (1987)"),
+        ({"bibId": three["id"]}, dict(three, **{"article-number": "024307"}),
          "Suzuki1987", "Suzuki et al., Phys. Rev. C 35, 024307 (1987)"),
-        ({"bibId": "10.1234/x"}, {"author": [{"family": "Kálmán"}, {"family": "Ng"}],
+        ({"bibId": "DOI:10.1234/x"}, {"author": [{"family": "Kálmán"}, {"family": "Ng"}],
                                   "container-title": ["Some Journal"], "published": {"date-parts": [[2025, 3]]}},
          "Kalman2025", "Kálmán and Ng, Some Journal (2025)"),
-        ({"bibId": "10.1234/x"}, {"author": [{"family": "de Groot"}]}, "deGroot", "de Groot"),
-        ({"bibId": "10.1234/x"}, {"author": [{"name": "MuX Collaboration"}], "published": {"date-parts": [[2024]]}},
+        ({"bibId": "DOI:10.1234/x"}, {"author": [{"family": "de Groot"}]}, "deGroot", "de Groot"),
+        ({"bibId": "DOI:10.1234/x"}, {"author": [{"name": "MuX Collaboration"}], "published": {"date-parts": [[2024]]}},
          "MuXCollaboration2024", "MuX Collaboration (2024)"),
-        ({"bibId": "10.1000/unpublished"}, None, "unpublished", "10.1000/unpublished"),
-        ({"bibId": "10.1016/0375-9474(88)90330-2"}, None, "0375947488903302", "10.1016/0375-9474(88)90330-2"),
-        ({"bibId": "10.1000/mund.x"}, {"title": ["A report"]}, "mundx", "A report"),
+        ({"bibId": "muND:unpublished"}, None, "unpublished", "muND:unpublished"),
+        ({"bibId": "NSR:1987SU06"}, None, "1987SU06", "NSR:1987SU06"),
+        ({"bibId": "DOI:10.1016/0375-9474(88)90330-2"}, None, "0375947488903302", "DOI:10.1016/0375-9474(88)90330-2"),
+        ({"bibId": "muND:x"}, {"id": "muND:x", "title": ["A report"]}, "x", "A report"),
     ]
     out = []
     for meta, ref, label, text in cases:

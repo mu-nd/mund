@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "muND BR file (template, not decided)",
+  "description": "A proposal for a file of the BR sub-library (production branching ratios of residual nuclei), made so that its pages can be designed before its format is decided. The envelope and the metadata are those of LT (schema/v1/lt.schema.json); only the entries differ. One entry is one residual nucleus from one target.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/BR/draft"},
+    "sublibrary": {"const": "BR"},
+    "datasetType": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/properties/datasetType"},
+    "meta": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/meta"},
+    "data": {"type": "array", "items": {"$ref": "#/$defs/entry"}}
+  },
+  "required": ["format", "sublibrary", "datasetType", "meta", "data"],
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "datasetId": {
+          "$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/id",
+          "description": "DataID as for LT, with the residual in place of the key: BR|{DataSet}|{element}|{mass x 1000}|{MetaID}|{RESIDUAL} (e.g. MG27, RH104M for an isomer)."
+        },
+        "nuclide": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/nuclide", "description": "The target."},
+        "observable": {
+          "type": "object",
+          "properties": {"kind": {"const": "branching_ratio"}, "branching_ratio": {"$ref": "#/$defs/branching_ratio"}},
+          "required": ["kind", "branching_ratio"],
+          "additionalProperties": false
+        },
+        "comment": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/text"}
+      },
+      "required": ["datasetId", "nuclide", "observable"],
+      "additionalProperties": false
+    },
+    "branching_ratio": {
+      "type": "object",
+      "properties": {
+        "residual": {
+          "type": "object",
+          "properties": {
+            "element": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/element"},
+            "mass": {"type": "integer", "minimum": 1, "maximum": 300},
+            "isomer": {"type": "integer", "minimum": 0, "description": "0 = ground state, 1 = first isomer ..."}
+          },
+          "required": ["element", "mass", "isomer"],
+          "additionalProperties": false
+        },
+        "value": {"type": "number", "minimum": 0},
+        "unit": {"const": "%"},
+        "uncertainties": {"type": "array", "items": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/uncertainty"}},
+        "per": {"const": "capture", "description": "The denominator; whether it is the stopped muon or the muon capture is not decided."},
+        "production": {"enum": ["independent", "cumulative"], "description": "Optional."}
+      },
+      "required": ["residual", "value", "unit", "uncertainties", "per"],
+      "additionalProperties": false
+    }
+  }
+}

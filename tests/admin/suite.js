@@ -9,8 +9,8 @@
 
 import { FakeLocal } from './fake-local.js';
 
-const MIZUNO = 'data/LT/EXP/Mizuno2025_dcb3b051457e.json';
-const CURATED = 'data/LT/CUR/unpublished_591344c27b81.json';
+const MIZUNO = 'data/LT/EXP/Mizuno2025_4d2ed5c83736.json';
+const CURATED = 'data/LT/CUR/unpublished_15fd4fea826c.json';
 const BIBLIOGRAPHY = 'data/master/bibliography.json';
 const CHANGELOG = '# Changelog\n\nChanges of the data.\n\n## 0.1.0 - 2026-11-16\n\n- First version.\n';
 
@@ -93,7 +93,7 @@ export function register(h, modules, env) {
     const ws = new Workspace(backend, memoryStorage());
     await ws.load();
     t.ok(!ws.paths().includes('data/LT/README.md'));
-    t.deepEqual(ws.dataFilePaths(), [CURATED, 'data/LT/EVAL/Iwamoto2025_c93df5b12b00.json', MIZUNO]);
+    t.deepEqual(ws.dataFilePaths(), [CURATED, 'data/LT/EVAL/Iwamoto2025_194f28ccc0dc.json', MIZUNO]);
     t.deepEqual(ws.db.sortedFiles().map((f) => f.path), ws.dataFilePaths());
     t.equal(ws.upstreamText('CHANGELOG.md'), CHANGELOG);
     t.deepEqual(Object.keys(ws.schemas).sort(), [...new Set(Object.values(database.SCHEMA_FILES))].sort());
@@ -108,23 +108,23 @@ export function register(h, modules, env) {
   h.test('admin: workspace keeps drafts, follows renamed identifiers and saves', async (t) => {
     const { server, backend, ws, storage } = await connected();
     t.equal(ws.changes().length, 0);
-    t.equal(ws.upstreamIds().has('3fc99c56a5ad'), true);
-    t.equal(ws.upstreamIds().has('dcb3b051457e'), false, 'MetaIDs are not datasetIds');
+    t.equal(ws.upstreamIds().has('d34215fe02f0'), true);
+    t.equal(ws.upstreamIds().has('4d2ed5c83736'), false, 'MetaIDs are not datasetIds');
 
     // correct an element: Si-30 -> S-30 in the Mizuno file, as the editor does
     const ed = open(ws, MIZUNO);
-    const row = ed.doc.data.find((r) => r.datasetId === '3fc99c56a5ad');
+    const row = ed.doc.data.find((r) => r.datasetId === 'd34215fe02f0');
     row.nuclide.element = 'S';
     let review = store(ed);
-    t.ok(row.datasetId !== '3fc99c56a5ad');
-    t.deepEqual(changesOf(review), [['3fc99c56a5ad', row.datasetId, null]], 'the change waits for a choice');
+    t.ok(row.datasetId !== 'd34215fe02f0');
+    t.deepEqual(changesOf(review), [['d34215fe02f0', row.datasetId, null]], 'the change waits for a choice');
     t.equal(ws.status(MIZUNO), 'modified');
     t.equal(ws.status(CURATED), 'unchanged', 'nothing is re-pointed before the choice');
     t.deepEqual(errors(ws).map((i) => i.code), ['E_ORIGINAL_MISSING']);
     t.deepEqual(choose(ed, row, 'same'), [CURATED], 'a correction of the same entry re-points the references');
     review = store(ed);
-    t.deepEqual(changesOf(review), [['3fc99c56a5ad', row.datasetId, 'same']]);
-    t.deepEqual(row.legacyIds, ['3fc99c56a5ad']);
+    t.deepEqual(changesOf(review), [['d34215fe02f0', row.datasetId, 'same']]);
+    t.deepEqual(row.legacyIds, ['3fc99c56a5ad', 'd34215fe02f0']);
     t.deepEqual(errors(ws), []);
     t.deepEqual(jsonfmt.parse(ws.text(CURATED)).data[4].originalData, [{ datasetId: row.datasetId, entryHash: '1c0e1571f823' }],
       'the recorded entryHash stays');
@@ -140,21 +140,21 @@ export function register(h, modules, env) {
     // a file written back to its saved text has no draft
     again.stage(MIZUNO, again.upstreamText(MIZUNO));
     t.equal(again.status(MIZUNO), 'unchanged');
-    t.deepEqual(again.replaceIds(new Map([[row.datasetId, '3fc99c56a5ad']]), MIZUNO), [CURATED]);
+    t.deepEqual(again.replaceIds(new Map([[row.datasetId, 'd34215fe02f0']]), MIZUNO), [CURATED]);
     t.equal(again.status(CURATED), 'unchanged', 'identifiers changed back: no change left');
     t.equal(again.changes().length, 0);
 
-    // a reference added to the bibliography: sorted by DOI, found without regard to case, file stays valid
+    // a reference added to the bibliography: sorted by id, found without regard to case, file stays valid
     let notified = 0;
     ws.onChange(() => { notified++; });
-    t.equal(ws.db.reference('10.1000/unpublished'), null);
-    ws.setReference({ DOI: '10.1000/unpublished', title: ['Curation in progress'], author: [{ family: 'Niikura', given: 'M.' }],
+    t.equal(ws.db.reference('muND:unpublished'), null);
+    ws.setReference({ id: 'muND:unpublished', title: ['Curation in progress'], author: [{ family: 'Niikura', given: 'M.' }],
       published: { 'date-parts': [[2026]] } });
     t.equal(ws.status(BIBLIOGRAPHY), 'modified');
-    t.equal(ws.db.reference('10.1000/UNPUBLISHED').title[0], 'Curation in progress');
-    t.deepEqual(jsonfmt.parse(ws.text(BIBLIOGRAPHY)).references.map((r) => r.DOI),
-      ['10.1000/unpublished', '10.1103/PhysRevC.111.034614', '10.1103/vl7z-rzp8']);
-    ws.setReference({ DOI: '10.1000/UNPUBLISHED', title: ['Curation of lifetimes'] });
+    t.equal(ws.db.reference('MUND:UNPUBLISHED').title[0], 'Curation in progress');
+    t.deepEqual(jsonfmt.parse(ws.text(BIBLIOGRAPHY)).references.map((r) => r.id),
+      ['DOI:10.1103/PhysRevC.111.034614', 'DOI:10.1103/vl7z-rzp8', 'muND:unpublished']);
+    ws.setReference({ id: 'muND:UNPUBLISHED', title: ['Curation of lifetimes'] });
     t.equal(jsonfmt.parse(ws.text(BIBLIOGRAPHY)).references.length, 3, 'an entry is replaced, not duplicated');
     t.deepEqual(ws.issuesFor(BIBLIOGRAPHY), []);
     await null;
@@ -171,7 +171,7 @@ export function register(h, modules, env) {
     t.deepEqual(server.commits[0].paths, [CURATED, MIZUNO, BIBLIOGRAPHY]);
     t.equal(server.commits[0].message, message);
     t.ok(server.github.get(MIZUNO).includes(`"datasetId": "${row.datasetId}", "nuclide": {"element": "S"`), 'sent to GitHub');
-    t.ok(server.github.get(MIZUNO).includes('"legacyIds": ["3fc99c56a5ad"]'));
+    t.ok(server.github.get(MIZUNO).includes('"legacyIds": ["3fc99c56a5ad", "d34215fe02f0"]'));
     t.ok(server.github.get(CURATED).includes(row.datasetId));
     t.ok(server.github.get(BIBLIOGRAPHY).includes('Curation of lifetimes'));
     t.equal(ws.upstreamText(MIZUNO), server.files.get(MIZUNO));
@@ -185,7 +185,7 @@ export function register(h, modules, env) {
     t.equal(ws.saveMessage(), 'Update LT/EXP Mizuno2025');
     t.equal(ws.saveMessage('  Typo.  '), 'Update LT/EXP Mizuno2025\n\nTypo.');
     ws.discardAll();
-    t.equal(ws.move(MIZUNO, 'data/LT/EXP/Nizuno2025_dcb3b051457e.json', ws.text(MIZUNO)), true);
+    t.equal(ws.move(MIZUNO, 'data/LT/EXP/Nizuno2025_4d2ed5c83736.json', ws.text(MIZUNO)), true);
     t.equal(ws.saveMessage(), 'Update LT/EXP Nizuno2025', 'a renamed file is one update');
     ws.discardAll();
     ws.stage('data/LT/TH/Tanaka2020_0123456789ab.json', '{}\n');
@@ -210,7 +210,7 @@ export function register(h, modules, env) {
     const { ws } = await connected();
     // a new EXP document with the DOI of the Mizuno publication gets the Mizuno file name
     const doc = ops.newDocument('EXP');
-    doc.meta.bibId = '10.1103/vl7z-rzp8';
+    doc.meta.bibId = 'DOI:10.1103/vl7z-rzp8';
     doc.meta.facility = 'J-PARC (D1)';
     database.assignIds(doc);
     const target = database.filePath(doc, ws.db.reference(doc.meta.bibId));
@@ -226,7 +226,7 @@ export function register(h, modules, env) {
 
   h.test('admin: a renamed file is discarded and deleted as a pair', async (t) => {
     const { ws } = await connected();
-    const moved = 'data/LT/EXP/Nizuno2025_dcb3b051457e.json';
+    const moved = 'data/LT/EXP/Nizuno2025_4d2ed5c83736.json';
     const text = ws.upstreamText(MIZUNO);
     const rename = () => t.equal(ws.move(MIZUNO, moved, text), true);
 
@@ -251,7 +251,7 @@ export function register(h, modules, env) {
     ws.discard(MIZUNO);
 
     rename();                                 // renamed twice: still one pair with the first origin
-    const again = 'data/LT/EXP/Ozuno2025_dcb3b051457e.json';
+    const again = 'data/LT/EXP/Ozuno2025_4d2ed5c83736.json';
     t.equal(ws.move(moved, again, text), true);
     t.deepEqual(ws.changes().map((c) => [c.path, c.status, c.origin]), [[MIZUNO, 'deleted', null], [again, 'added', MIZUNO]]);
     t.equal(ws.move(again, MIZUNO, text), true, 'renamed back');
@@ -362,13 +362,18 @@ export function register(h, modules, env) {
 
   h.test('admin: document operations of the editor', async (t) => {
     const schemas = { lt: JSON.parse(await env.text('schema', 'lt.schema.json')) };
-    t.ok(ops.isDoi('10.1103/PhysRevC.35.2212', schemas.lt));
-    t.ok(ops.isDoi('10.1000/mund.Suzuki1975thesis', schemas.lt));
-    t.ok(!ops.isDoi('https://doi.org/10.1103/x', schemas.lt) && !ops.isDoi('10.1103/a;b', schemas.lt) && !ops.isDoi('', schemas.lt));
-    t.ok(!ops.isDoi('10.1103/x', null), 'no schema: nothing is a DOI');
+    t.ok(ops.isBibId('DOI:10.1103/PhysRevC.35.2212', schemas.lt));
+    t.ok(ops.isBibId('NSR:1987SU06', schemas.lt) && ops.isBibId('muND:Suzuki1975thesis', schemas.lt));
+    t.ok(!ops.isBibId('https://doi.org/10.1103/x', schemas.lt) && !ops.isBibId('DOI:10.1103/a;b', schemas.lt) && !ops.isBibId('', schemas.lt));
+    t.ok(!ops.isBibId('10.1103/x', schemas.lt) && !ops.isBibId('1987SU06', schemas.lt) && !ops.isBibId('mund:x', schemas.lt),
+      'DOI:, NSR: and muND: are written out');
+    t.ok(!ops.isBibId('DOI:10.1103/x', null), 'no schema: nothing is a bibId');
+    // what is typed or pasted gets its prefix
+    t.deepEqual(['10.1103/x', 'https://doi.org/10.1103/x', 'doi: 10.1103/x', 'DOI:10.1103/x', '1987SU06', 'NSR:1987SU06', 'muND:x', ' unpublished ']
+      .map(ops.sourceText), ['DOI:10.1103/x', 'DOI:10.1103/x', 'DOI:10.1103/x', 'DOI:10.1103/x', 'NSR:1987SU06', 'NSR:1987SU06', 'muND:x', 'unpublished']);
 
     // shape: what the grid cannot edit is reported, nothing is added or replaced
-    const text = '{"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "curated", "meta": {"bibId": "10.1000/test"}, '
+    const text = '{"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "curated", "meta": {"bibId": "DOI:10.1000/test"}, '
       + '"data": [{"nuclide": {"element": "Si", "mass": 28}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.90, "unit": "ns"}}}, 7, '
       + '{"observable": {"kind": "speed"}}, {"nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 8.7e-8, "unit": "s", "uncertainties": "none"}}}]}';
     const doc = jsonfmt.parse(text);
@@ -411,7 +416,7 @@ export function register(h, modules, env) {
     t.equal(entry.observable.lifetime.unit, 'ns');
 
     // datasetType: members the new type does not allow are dropped
-    entry.originalData = [{ datasetId: '5fb28c42563b', entryHash: '660544992a4a' }];
+    entry.originalData = [{ datasetId: '09c1551803d0', entryHash: '660544992a4a' }];
     doc.meta.facility = 'J-PARC (D1)';
     doc.meta.referenceDatabase = 'x';
     ops.setDatasetType(doc, 'TH');
@@ -444,7 +449,7 @@ export function register(h, modules, env) {
     applyJson(ed, lines.join('\n'));
     t.deepEqual(none(store(ed)), [[], [], [], []], 'a new order is no change of identity');
     t.deepEqual(ed.doc.data.slice(0, 2).map((e) => [e.datasetId, e.legacyIds, ops.originalIds(e)]),
-      [['18d9d393dfc6', ['935cd42f14bd'], ['343adc036597', '3976d87eadb1']], ['f02832f1580f', ['4f888682a401'], ['5fb28c42563b']]]);
+      [['b15200d13c23', ['935cd42f14bd', '18d9d393dfc6'], ['dd91adba8444', '9f594e0f6502']], ['0c29e247f762', ['4f888682a401', 'f02832f1580f'], ['09c1551803d0']]]);
     t.deepEqual(dataLines(ws.text(CURATED)).sort(), dataLines(ws.upstreamText(CURATED)).sort(), 'every row is as it was');
     t.deepEqual(ws.issues().filter((i) => i.file.startsWith('data/LT/')), []);
     ws.discardAll();
@@ -465,7 +470,7 @@ export function register(h, modules, env) {
     let review = store(ed);
     t.deepEqual([review.changes, review.added, review.deleted], [[], [ca], []]);
     t.deepEqual(ed.doc.data.slice(1).map((e) => e.datasetId), savedIds);
-    t.ok(ed.doc.data.every((e) => !('legacyIds' in e)));
+    t.ok(ed.doc.data.every((e) => !e.legacyIds || e.legacyIds.length === 1), 'no former identifier is added');
     t.equal(ws.status(CURATED), 'unchanged');
     t.deepEqual(errors(ws), []);
     ws.discardAll();
@@ -484,14 +489,14 @@ export function register(h, modules, env) {
     // a row deleted in the middle (Si-29), in the JSON tab and in the form: the others keep their
     // identifiers; the reference to the deleted row is reported, not moved to another row
     for (const remove of [
-      (e) => applyJson(e, shown(e).split('\n').filter((l) => !l.includes('"735e0e78bc31"')).join('\n')),
+      (e) => applyJson(e, shown(e).split('\n').filter((l) => !l.includes('"ca4139686296"')).join('\n')),
       (e) => e.doc.data.splice(4, 1),
     ]) {
       ed = open(ws, MIZUNO);
       remove(ed);
       review = store(ed);
-      t.deepEqual([review.changes, review.added, review.deleted], [[], [], ['735e0e78bc31']]);
-      t.deepEqual(ed.doc.data.map((e) => e.datasetId), savedIds.filter((id) => id !== '735e0e78bc31'));
+      t.deepEqual([review.changes, review.added, review.deleted], [[], [], ['ca4139686296']]);
+      t.deepEqual(ed.doc.data.map((e) => e.datasetId), savedIds.filter((id) => id !== 'ca4139686296'));
       t.equal(ws.status(CURATED), 'unchanged');
       t.deepEqual(errors(ws).map((i) => [i.code, i.file, i.pointer]), [['E_ORIGINAL_MISSING', CURATED, '/data/3/originalData/0']]);
       ws.discardAll();
@@ -503,13 +508,13 @@ export function register(h, modules, env) {
 
     // 'different': no legacyIds, the reference stays and is reported
     let ed = open(ws, MIZUNO);
-    const si30 = ed.doc.data.find((e) => e.datasetId === '3fc99c56a5ad');
+    const si30 = ed.doc.data.find((e) => e.datasetId === 'd34215fe02f0');
     si30.nuclide.element = 'S';
     let review = store(ed);
     const s30 = si30.datasetId;
-    t.deepEqual(changesOf(review), [['3fc99c56a5ad', s30, null]]);
+    t.deepEqual(changesOf(review), [['d34215fe02f0', s30, null]]);
     t.deepEqual(choose(ed, si30, 'different'), []);
-    t.deepEqual(changesOf(store(ed)), [['3fc99c56a5ad', s30, 'different']]);
+    t.deepEqual(changesOf(store(ed)), [['d34215fe02f0', s30, 'different']]);
     t.ok(!('legacyIds' in si30));
     t.equal(ws.status(CURATED), 'unchanged');
     t.deepEqual(errors(ws).map((i) => [i.code, i.file]), [['E_ORIGINAL_MISSING', CURATED]]);
@@ -517,19 +522,19 @@ export function register(h, modules, env) {
     // changed to 'same': the former ID is kept and the reference follows (in one save with this file)
     t.deepEqual(choose(ed, si30, 'same'), [CURATED]);
     store(ed);
-    t.deepEqual(si30.legacyIds, ['3fc99c56a5ad']);
+    t.deepEqual(si30.legacyIds, ['3fc99c56a5ad', 'd34215fe02f0']);
     t.deepEqual(ops.originalIds(jsonfmt.parse(ws.text(CURATED)).data[4]), [s30]);
     t.deepEqual(errors(ws), []);
     t.deepEqual(ws.changes().map((c) => c.path), [CURATED, MIZUNO]);
 
     // the draft read again (the page was reloaded): the choice is known from legacyIds
-    t.deepEqual(changesOf(store(open(ws, MIZUNO))), [['3fc99c56a5ad', s30, 'same']]);
+    t.deepEqual(changesOf(store(open(ws, MIZUNO))), [['d34215fe02f0', s30, 'same']]);
 
     // the identifiers change again: the choice is undone and asked again
     si30.nuclide.mass = 31;
     review = store(ed);
-    t.deepEqual(changesOf(review), [['3fc99c56a5ad', si30.datasetId, null]]);
-    t.ok(!('legacyIds' in si30));
+    t.deepEqual(changesOf(review), [['d34215fe02f0', si30.datasetId, null]]);
+    t.deepEqual(si30.legacyIds, ['3fc99c56a5ad'], 'the former identifiers as saved');
     t.equal(ws.status(CURATED), 'unchanged', 'the reference names the saved ID again');
 
     // changed back: nothing to choose, nothing changed
@@ -549,9 +554,9 @@ export function register(h, modules, env) {
     t.ok(!('legacyIds' in mg));
     choose(cur, mg, 'same');
     store(cur);
-    t.deepEqual(mg.legacyIds, ['4f888682a401', 'f02832f1580f']);
+    t.deepEqual(mg.legacyIds, ['4f888682a401', 'f02832f1580f', '0c29e247f762']);
     cur.tracker.undoAll(cur.doc, ws, cur.path);
-    t.deepEqual(mg.legacyIds, ['4f888682a401']);
+    t.deepEqual(mg.legacyIds, ['4f888682a401', 'f02832f1580f']);
     ws.discardAll();
 
     // the key of the file changed: every row changes and the file is renamed; all corrections, saved together
@@ -565,24 +570,24 @@ export function register(h, modules, env) {
     store(ed);
     t.deepEqual(errors(ws), []);
     t.deepEqual(ws.issuesFor(CURATED), [], 'the contents did not change: nothing to check again');
-    t.ok(ed.doc.data.every((e) => e.legacyIds && e.legacyIds.length === 1));
+    t.ok(ed.doc.data.every((e) => e.legacyIds && e.legacyIds.length === 2), 'the former identifier follows those saved');
     t.deepEqual(ws.changes().map((c) => c.path).sort(), [CURATED, MIZUNO, ed.path].sort());
     ws.discardAll();
 
     // ambiguous: two rows made from one saved row in the JSON tab; nothing is re-pointed
     ed = open(ws, MIZUNO);
     const lines = shown(ed).split('\n');
-    const at = lines.findIndex((l) => l.includes('"3fc99c56a5ad"'));
+    const at = lines.findIndex((l) => l.includes('"d34215fe02f0"'));
     lines.splice(at, 1, lines[at].replace('"element": "Si"', '"element": "S"'), lines[at].replace('"element": "Si"', '"element": "P"'));
     applyJson(ed, lines.join('\n'));
     review = store(ed);
     t.deepEqual(review.changes, []);
-    t.deepEqual(review.ambiguous.map((a) => [a.from, a.entries.length]), [['3fc99c56a5ad', 2]]);
+    t.deepEqual(review.ambiguous.map((a) => [a.from, a.entries.length]), [['d34215fe02f0', 2]]);
     t.equal(ws.status(CURATED), 'unchanged');
-    t.ok(ed.doc.data.every((e) => !('legacyIds' in e)));
+    t.ok(ed.doc.data.every((e) => !e.legacyIds || e.legacyIds.length === 1), 'no former identifier is added');
     // one of them deleted again: the other one is the changed row, to be chosen for
     applyJson(ed, shown(ed).split('\n').filter((l) => !l.includes('"element": "P"')).join('\n'));
-    t.deepEqual(changesOf(store(ed)), [['3fc99c56a5ad', s30, null]]);
+    t.deepEqual(changesOf(store(ed)), [['d34215fe02f0', s30, null]]);
     ws.discardAll();
 
     // the form: a row duplicated (the copy has no datasetId) and the original changed: the copy is the saved row
@@ -594,7 +599,7 @@ export function register(h, modules, env) {
     original.key = 'b';
     review = store(ed);
     t.deepEqual([review.changes, review.ambiguous, review.deleted, review.added], [[], [], [], [original]]);
-    t.equal(copy.datasetId, '3fc99c56a5ad');
+    t.equal(copy.datasetId, 'd34215fe02f0');
     t.equal(ws.status(CURATED), 'unchanged');
   });
 
@@ -635,7 +640,7 @@ export function register(h, modules, env) {
     t.deepEqual(store(ed).changes, [], 'values, units and comments do not change the identity');
     const text = ws.text(MIZUNO);
     t.ok(text.includes('"observable": {"kind": "lifetime", "lifetime": {"value": 1.06550, "unit": "us", "uncertainties": '
-      + '[{"source": "statistical", "value": 0.00080}, {"source": "systematic", "value": 0.0012}]}}, "comment": "Target: natural Mg, 2.0 mm"}'));
+      + '[{"source": "statistical", "value": 0.00080}, {"source": "systematic", "value": 0.0012}]}}, "comment": "Target: natural Mg, 2.0 mm", "legacyIds": ["5fb28c42563b"]}'));
     applyJson(ed, shown(ed));                         // the JSON tab, applied as shown
     store(ed);
     t.equal(ws.text(MIZUNO), text);
@@ -645,7 +650,7 @@ export function register(h, modules, env) {
     t.equal(again.unit, 'us');
     t.deepEqual(['total', 'statistical', 'systematic'].map((s) => ops.uncertaintyText(again, s)), ['', '0.00080', '0.0012']);
     t.equal(ed.doc.data[0].comment, 'Target: natural Mg, 2.0 mm');
-    t.equal(ed.doc.data[0].datasetId, '5fb28c42563b');
+    t.equal(ed.doc.data[0].datasetId, '09c1551803d0');
   });
 
   h.test('admin: drafts survive an edit during a save, a failed save and a reload', async (t) => {
@@ -720,27 +725,27 @@ export function register(h, modules, env) {
   h.test('admin: original data record the entryHash when chosen; a changed original must be checked again', async (t) => {
     const { ws } = await connected();
     const lookup = () => ops.entryLookup(ws.db);
-    const MG = '5fb28c42563b';
+    const MG = '09c1551803d0';
     t.equal(lookup().resolve(MG).entry.nuclide.element, 'Mg');
-    t.equal(lookup().resolve('4f888682a401').current, 'f02832f1580f', 'an earlier identifier names its entry');
+    t.equal(lookup().resolve('4f888682a401').current, '0c29e247f762', 'an earlier identifier names its entry');
     t.equal(lookup().resolve('000000000000'), null);
 
     // the text cell: a new id gets the entryHash of its entry now; an id typed again gets back what was recorded
     const recorded = { datasetId: MG, entryHash: '000000000000' };
-    t.deepEqual(ops.parseOriginalData(`${MG}, 343adc036597`, [recorded], lookup()), [recorded, { datasetId: '343adc036597', entryHash: 'f0ba34e98a85' }]);
+    t.deepEqual(ops.parseOriginalData(`${MG}, dd91adba8444`, [recorded], lookup()), [recorded, { datasetId: 'dd91adba8444', entryHash: 'f0ba34e98a85' }]);
     t.equal(ops.parseOriginalData(` ${MG} `, [recorded], lookup())[0], recorded);
     t.deepEqual(ops.parseOriginalData('343adc0365', [recorded], lookup()), [{ datasetId: '343adc0365' }], 'no entry: no entryHash (reported)');
     t.deepEqual(ops.parseOriginalData('', [recorded], lookup()), []);
-    t.deepEqual(ops.parseOriginalData('f02832f1580f', [{ datasetId: '4f888682a401', entryHash: 'aaaaaaaaaaaa' }], lookup()),
-      [{ datasetId: 'f02832f1580f', entryHash: 'aaaaaaaaaaaa' }], 'the current ID of the same entry keeps the recorded entryHash');
+    t.deepEqual(ops.parseOriginalData('0c29e247f762', [{ datasetId: '4f888682a401', entryHash: 'aaaaaaaaaaaa' }], lookup()),
+      [{ datasetId: '0c29e247f762', entryHash: 'aaaaaaaaaaaa' }], 'the current ID of the same entry keeps the recorded entryHash');
 
     // the picker: ticked entries keep their items, new ones get the entryHash now, entries not offered stay
     const other = { datasetId: 'ffffffffffff', entryHash: '111111111111' };
-    const offered = [MG, '343adc036597', '3976d87eadb1'];
-    t.deepEqual(ops.pickOriginalData([recorded, other], offered, new Set([MG, '3976d87eadb1']), lookup()),
-      [recorded, other, { datasetId: '3976d87eadb1', entryHash: '5cf2b08a8d7c' }]);
+    const offered = [MG, 'dd91adba8444', '9f594e0f6502'];
+    t.deepEqual(ops.pickOriginalData([recorded, other], offered, new Set([MG, '9f594e0f6502']), lookup()),
+      [recorded, other, { datasetId: '9f594e0f6502', entryHash: '5cf2b08a8d7c' }]);
     t.deepEqual(ops.pickOriginalData([recorded, other], offered, new Set(), lookup()), [other]);
-    t.deepEqual(ops.pickOriginalData([{ datasetId: '4f888682a401', entryHash: 'aaaaaaaaaaaa' }], ['f02832f1580f'], new Set(['f02832f1580f']), lookup()),
+    t.deepEqual(ops.pickOriginalData([{ datasetId: '4f888682a401', entryHash: 'aaaaaaaaaaaa' }], ['0c29e247f762'], new Set(['0c29e247f762']), lookup()),
       [{ datasetId: '4f888682a401', entryHash: 'aaaaaaaaaaaa' }], 'an item naming the entry by an earlier ID covers it');
 
     // an original corrected: the curated entry must be checked again, and nothing records the new entryHash by itself

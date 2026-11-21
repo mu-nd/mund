@@ -5,7 +5,7 @@
 
 import { h, replace, card, cardHead, externalLink, nuclideNode, downloadText, segSwitch } from '../core/dom.js';
 import * as jsonfmt from '../core/jsonfmt.js';
-import { citeLabel, citeText, doiUrl } from '../core/cite.js';
+import { citeLabel, citeText, sourceUrl } from '../core/cite.js';
 import { formatQuantity, formatDerived } from '../core/format.js';
 import { QUANTITIES, UNIT_LABELS } from '../core/convert.js';
 import { CODES, CODE_TITLES, CODE_NOTES, ELEMENT_NAMES, elementLabel } from '../core/vocabulary.js';
@@ -77,8 +77,8 @@ function quantityCell(row, name) {
 }
 
 function referenceLink(row) {
-  const url = doiUrl(row.entry.bibId);
-  const label = row.reference ? citeLabel(row.reference, row.entry.bibId) : 'unpublished';
+  const url = sourceUrl(row.entry.bibId, row.reference);
+  const label = citeLabel(row.reference, row.entry.bibId);
   const title = citeText(row.reference, row.entry.bibId);
   if (!url) return h('span', { title }, label);
   const link = externalLink(url, label);

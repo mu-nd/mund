@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ribf.riken.jp/muon/schema/v1/bibliography.schema.json",
   "title": "muND bibliography",
-  "description": "Bibliographic data of the references, found through their DOI (bibId). Entries are a cached subset of the Crossref record of the DOI and use Crossref's member names; a source without DOI gets a hand-made entry of the same shape under its placeholder DOI.",
+  "description": "Bibliographic data of the references, found through their bibId. An entry is a cached subset of the Crossref record of the source and uses Crossref's member names.",
   "type": "object",
   "properties": {
     "format": {"const": "muND/bibliography/1"},
@@ -12,7 +12,11 @@
       "items": {
         "type": "object",
         "properties": {
-          "DOI": {"type": "string", "pattern": "^10\\.[0-9]{4,9}/[^\\s;]+$"},
+          "id": {
+            "type": "string",
+            "pattern": "^(DOI:10\\.[0-9]{4,9}/[^\\s;]+|NSR:[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}|muND:[A-Za-z0-9][A-Za-z0-9._-]*)$",
+            "description": "The bibId of the source: DOI:<DOI>, NSR:<keynumber> or muND:<name>."
+          },
           "type": {
             "type": "string",
             "minLength": 1,
@@ -57,10 +61,10 @@
           "URL": {
             "type": "string",
             "minLength": 1,
-            "description": "Where to find the source when the DOI is a placeholder."
+            "description": "Where to find a source named by a muND key."
           }
         },
-        "required": ["DOI"],
+        "required": ["id"],
         "additionalProperties": false
       }
     }

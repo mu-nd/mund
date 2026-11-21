@@ -11,7 +11,7 @@ Three layers of checks:
 A file of a sub-library (see ``docs/data-format.md``)::
 
     {"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "experiment",
-     "meta": {"id": MetaID, "bibId": DOI, ...},
+     "meta": {"id": MetaID, "bibId": "DOI:...", ...},
      "data": [{"datasetId": DataID,
                "nuclide": {"element": "Si", "mass": 28, "isomer": 0},
                "observable": {"kind": "lifetime",
@@ -27,7 +27,7 @@ from typing import Dict, List, Optional
 
 from . import CODE_OF, DEFINED_SUBLIBRARIES, SUBLIBRARIES, ids, jsonfmt
 from . import schema as schema_mod
-from .cite import file_label, is_placeholder_doi
+from .cite import bib_kind, file_label
 
 DATA_DIR = "data"
 MASTER_DIR = "data/master"
@@ -203,18 +203,18 @@ class Database:
         return f.obj if f is not None and isinstance(f.obj, dict) else {}
 
     def references(self) -> Dict[str, dict]:
-        """Bibliography entries by normalised DOI."""
+        """Bibliography entries by their normalised ``id`` (the bibId)."""
         if self._references is None:
             out: Dict[str, dict] = {}
             refs = self.master_obj("bibliography.json").get("references")
             for ref in refs if isinstance(refs, list) else []:
-                if isinstance(ref, dict) and isinstance(ref.get("DOI"), str):
-                    out.setdefault(ids.normalize_doi(ref["DOI"]), ref)
+                if isinstance(ref, dict) and isinstance(ref.get("id"), str) and ref["id"]:
+                    out.setdefault(ids.normalize_bib_id(ref["id"]), ref)
             self._references = out
         return self._references
 
-    def reference(self, doi) -> Optional[dict]:
-        return self.references().get(ids.normalize_doi(doi)) if isinstance(doi, str) else None
+    def reference(self, bib_id) -> Optional[dict]:
+        return self.references().get(ids.normalize_bib_id(bib_id)) if isinstance(bib_id, str) else None
 
     def tables(self) -> dict:
         """Look-up tables of the nuclide and facility lists."""
@@ -282,8 +282,8 @@ class Database:
             issues.extend(self._check_unique(f, "facilities", "abbr", "E_DUPLICATE_FACILITY",
                                              lambda v: v))
         if name == "bibliography.json":
-            issues.extend(self._check_unique(f, "references", "DOI", "E_DUPLICATE_REFERENCE",
-                                             ids.normalize_doi))
+            issues.extend(self._check_unique(f, "references", "id", "E_DUPLICATE_REFERENCE",
+                                             ids.normalize_bib_id))
         if name == "constants.json":
             issues.extend(self._check_unique(f, "constants", "name", "E_DUPLICATE_CONSTANT", lambda v: v))
             issues.extend(self._check_constants(f))
@@ -414,7 +414,8 @@ class Database:
             issues.append(Issue("error", "E_FACILITY", path, "/meta/facility",
                                 "%r is not listed in %s/facilities.json" % (facility, MASTER_DIR)))
         bib_id = meta.get("bibId")
-        if isinstance(bib_id, str) and not is_placeholder_doi(bib_id) and self.reference(bib_id) is None:
+        # a DOI or an NSR keynumber has its bibliographic data in the bibliography; a muND key may have them
+        if bib_kind(bib_id) in ("DOI", "NSR") and self.reference(bib_id) is None:
             issues.append(Issue("warning", "W_NO_REFERENCE", path, "/meta/bibId",
                                 "no bibliographic information for %s in %s/bibliography.json"
                                 % (bib_id, MASTER_DIR)))

@@ -1,8 +1,8 @@
 /* muND - the pages of the site: home, explorer, downloads, documents, converter */
 
 .view { display: flex; flex-direction: column; gap: 16px; }
-/* the header, as on the project site: the name on the left, the menu on the right,
-   the chosen page in blue; a shadow only once the page is scrolled (main.js) */
+/* the header, as on the project site: the name on the left, the menu and the icons (GitHub, colours)
+   on the right, the chosen page in blue; a shadow only once the page is scrolled (main.js) */
 .site-header { box-shadow: none; transition: box-shadow 0.3s; }
 body.scrolled .site-header { box-shadow: var(--header-shadow); }
 .site-header .bar { padding-top: 16px; padding-bottom: 16px; }
@@ -10,6 +10,13 @@ body.scrolled .site-header { box-shadow: var(--header-shadow); }
 .site-nav { margin-left: auto; justify-content: flex-end; }
 .site-nav a { padding: 8px 14px; border-radius: 0; background: none; color: var(--ink); font-size: 1.05rem; font-weight: 500; }
 .site-nav a:hover, .site-nav a[aria-current="page"] { background: none; color: var(--accent); font-weight: 500; }
+.site-tools .icon-button { color: var(--ink); }
+.site-tools svg { width: 20px; height: 20px; }
+/* where the three do not fit on one line: the name and the icons, then the menu below */
+@media (max-width: 800px) {
+  .site-tools { margin-left: auto; }
+  .site-nav { order: 1; flex-basis: 100%; }
+}
 @media (max-width: 640px) {
   .site-header .bar { padding-top: 12px; padding-bottom: 8px; }
   .site-header .brand { font-size: 1.3rem; }
@@ -164,14 +171,8 @@ label.check input { width: auto; min-height: 0; }
    the copy button in its top right corner (as on code blocks on GitHub) */
 .cite-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 4px 0 14px; }
 .cite-wrap { position: relative; }
-.cite-copy {
-  position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px;
-  background: var(--surface); color: var(--ink-2); cursor: pointer;
-}
-.cite-copy:hover { background: var(--surface-2); color: var(--ink); }
+.cite-copy { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 1px solid var(--border-strong); background: var(--surface); }
 .cite-copy.copied { color: var(--good); border-color: var(--good); }
-.cite-copy svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 textarea.cite-text {
   display: block; width: 100%; min-height: 44px; resize: none; padding: 8px 46px 8px 10px;    /* the text clear of the copy button */
   border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--surface-2); color: var(--ink);

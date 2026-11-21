@@ -121,10 +121,17 @@ export function setUncertainty(block, source, text) {
   setNumberField(u, 'value', t);
 }
 
-/** Whether `text` is a DOI as the file's schema defines it ($defs/doi). */
-export function isDoi(text, schema) {
-  const def = schema && schema.$defs && schema.$defs.doi;
+/** Whether `text` is a bibId (DOI, NSR: keynumber or muND: key) as the file's schema defines it ($defs/bibId). */
+export function isBibId(text, schema) {
+  const def = schema && schema.$defs && schema.$defs.bibId;
   return Boolean(def && typeof def.pattern === 'string' && new RegExp(def.pattern, 'u').test(text));
+}
+
+/** A typed or pasted source as a bibId: a DOI or a doi.org address gets DOI:, a bare NSR keynumber NSR:. */
+export function sourceText(text) {
+  const t = String(text || '').trim().replace(/^(https?:\/\/(dx\.)?doi\.org\/|doi:\s*)/i, '');
+  if (/^10\./.test(t)) return `DOI:${t}`;
+  return /^[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}$/.test(t) ? `NSR:${t}` : t;
 }
 
 /** Short name of an entry's nuclide and key: '30Si', 'natSi [plate]'. */
@@ -135,7 +142,7 @@ export function entryLabel(entry) {
   return `${mass}${element}${isObject(entry) && typeof entry.key === 'string' && entry.key ? ` [${entry.key}]` : ''}`;
 }
 
-/** 'LT/EXP Mizuno2025' for the file data/LT/EXP/Mizuno2025_dcb3b051457e.json. */
+/** 'LT/EXP Mizuno2025' for the file data/LT/EXP/Mizuno2025_4d2ed5c83736.json. */
 export function fileName(path) {
   const parts = String(path).split('/');
   return parts.length === 4 ? `${parts[1]}/${parts[2]} ${parts[3].replace(/(_[0-9a-f]{12})?\.json$/, '')}` : String(path);

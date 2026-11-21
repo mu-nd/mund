@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/explorer.css">
 <link rel="modulepreload" href="assets/js/explorer/main.js">
-<!-- the dark colours, if the reader chose them before (main.js, footer) -->
+<!-- the dark colours, if the reader chose them before (main.js, the switch in the header) -->
 <script>try { if (localStorage.getItem('mund-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}</script>
 </head>
 <!-- Home, and the template of every page of the site: the build makes the
@@ -19,6 +19,7 @@
   <div class="bar">
     <a class="brand" href="./">Muon Nuclear Data</a>
     <nav class="site-nav" id="nav" aria-label="Pages"></nav>
+    <div class="site-tools" id="tools"></div>
   </div>
 </header>
 <main class="page" id="main">
@@ -29,7 +30,6 @@
 <footer class="site-footer">
   <div class="bar">
     <span>© Copyright <strong>Transmutation data research group, RIKEN Nishina Center</strong> All Rights Reserved</span>
-    <span class="links" id="footer"></span>
   </div>
 </footer>
 <script type="module" src="assets/js/explorer/main.js"></script>

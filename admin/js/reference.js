@@ -1,5 +1,6 @@
-// The 文献 (reference) card of the editor: kind of data, DOI, key, related
-// DOIs, and the bibliography entry of the DOI (data/master/bibliography.json),
+// The 文献 (reference) card of the editor: kind of data, the source (bibId: DOI:<DOI>;
+// without a DOI NSR:<keynumber>; found in neither muND:<name>), key, related
+// sources, and the bibliography entry of the source (data/master/bibliography.json),
 // which is edited here and stored with save().
 
 import { h, replace } from '../../site/assets/js/core/dom.js';
@@ -7,13 +8,17 @@ import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
 import * as ids from '../../site/assets/js/core/ids.js';
 import { CODES, CODE_TITLES, TYPE_OF } from '../../site/assets/js/core/vocabulary.js';
 import { expectedMetaId, fileCode } from '../../site/assets/js/core/database.js';
-import { isPlaceholderDoi, asciiLabel, firstAuthor, referenceYear } from '../../site/assets/js/core/cite.js';
+import { bibKind, bibName, bibUrl, asciiLabel, firstAuthor, referenceYear } from '../../site/assets/js/core/cite.js';
 import { T } from './i18n.js';
 import { field, textInput } from './form.js';
-import { setDatasetType } from './document.js';
+import { setDatasetType, sourceText } from './document.js';
 import { lookupDoi } from './crossref.js';
 
 const REFERENCE_TYPES = ['journal-article', 'proceedings-article', 'report', 'dissertation', 'book-chapter', 'posted-content'];
+
+/** How a source is named (the reference card and the extraction page). */
+export const SOURCE_HINT = () => T('DOI:10.1103/… の形。DOI がなければ NSR のキー番号を NSR:1987SU06 の形で、どちらもなければ「DOI なし…」で muND:名前。DOI・doi.org のアドレス・キー番号だけを入れても前置きが付きます',
+  'DOI:10.1103/…; without a DOI, the NSR keynumber as NSR:1987SU06; found in neither, muND:<name> (“No DOI …”). A bare DOI, doi.org address or keynumber gets its prefix.');
 
 function authorsToText(authors) {
   return (authors || []).map((a) => (a.family ? (a.given ? `${a.family}, ${a.given}` : a.family) : (a.name || ''))).join('\n');
@@ -31,30 +36,31 @@ function textToAuthors(text) {
 /**
  * workspace     the Workspace (bibliography look-ups, storing the entry)
  * controls      Map JSON pointer -> control, filled with the metadata controls of the card
- * isDoi(text)   whether text is a valid DOI
+ * isBibId(text) whether text is a valid bibId
  * markDirty()   called after every edit
  * onTypeChange()  called after the datasetType changed (the rest of the form depends on it)
  */
-export function referencePart({ workspace, controls, isDoi, markDirty, onTypeChange }) {
-  let reference = { DOI: '' };        // the bibliography entry shown and edited
+export function referencePart({ workspace, controls, isBibId, markDirty, onTypeChange }) {
+  let reference = { id: '' };         // the bibliography entry shown and edited
   let edited = false;                 // it differs from what the bibliography holds
   let fieldsEl = null;
   const metaIdEl = h('code', { class: 'computed' });
   const metaSourceEl = h('span', { class: 'muted small mono' });
   const lookupStatus = h('span', { class: 'small muted', role: 'status' });
 
-  /** Show the bibliography entry of `doi` (an empty one when there is none). */
-  function load(doi) {
-    const found = workspace.db.reference(doi);
-    reference = found ? jsonfmt.clone(found) : { DOI: doi };
+  /** Show the bibliography entry of `bibId` (an empty one when there is none). */
+  function load(bibId) {
+    const found = workspace.db.reference(bibId);
+    reference = found ? jsonfmt.clone(found) : { id: bibId };
     edited = false;
   }
 
-  /** Stage the entry under `doi` when it was edited. */
-  function save(doi) {
-    if (!edited || !isDoi(doi)) return;
+  /** Stage the entry under `bibId` when it was edited. */
+  function save(bibId) {
+    if (!edited || !isBibId(bibId)) return;
     edited = false;
-    reference.DOI = doi;
+    delete reference.id;
+    reference = { id: bibId, ...reference };
     workspace.setReference(jsonfmt.clone(reference));
   }
 
@@ -104,7 +110,7 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
       field(T('論文番号', 'Article number'), input('article-number', '024307')),
       field(T('年', 'Year'), year),
       field(T('種類', 'Type'), input('type', 'journal-article', 'reference-types')),
-      field('URL', input('URL', 'https://…'), { hint: T('DOI がない文献の所在', 'Where to find a source without DOI') }),
+      field('URL', input('URL', 'https://…'), { hint: T('muND:… の文献の所在', 'Where to find a source named muND:…') }),
       h('datalist', { id: 'reference-types' }, REFERENCE_TYPES.map((t) => h('option', { value: t }))));
   }
 
@@ -113,16 +119,20 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
     const bibId = () => String(doc.meta.bibId || '').trim();
 
     async function lookup() {
-      const doi = bibId();
-      if (!isDoi(doi)) { lookupStatus.textContent = T('DOI を入力してください', 'Enter a DOI first'); return; }
-      if (isPlaceholderDoi(doi)) {
-        lookupStatus.textContent = T('仮 DOI のため検索できません。書誌情報を手入力してください。',
-          'Placeholder DOI: please type the bibliographic data.');
+      const source = bibId();
+      if (!isBibId(source)) { lookupStatus.textContent = SOURCE_HINT(); return; }
+      if (bibKind(source) === 'NSR') {
+        replace(lookupStatus, T('NSR のページで書誌情報を確かめ、手入力してください: ', 'Check the bibliographic data on its NSR page and type them: '),
+          h('a', { href: bibUrl(source), target: '_blank', rel: 'noopener' }, source));
+        return;
+      }
+      if (bibKind(source) === 'muND') {
+        lookupStatus.textContent = T('muND の識別子です。書誌情報を手入力してください。', 'A muND key: please type the bibliographic data.');
         return;
       }
       lookupStatus.textContent = T('検索中…', 'Looking up …');
       try {
-        const found = await lookupDoi(doi);
+        const found = await lookupDoi(bibName(source));
         if (!lookupStatus.isConnected) return;          // the editor was left meanwhile
         if (!found) { lookupStatus.textContent = T('見つかりませんでした', 'Not found'); return; }
         reference = found.reference;
@@ -136,15 +146,15 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
       }
     }
 
-    function placeholderDoi() {
-      const slug = prompt(T('DOI のない文献の識別名(英数字)。例: Suzuki1975thesis',
-        'Short name for a source without DOI (letters and digits), e.g. Suzuki1975thesis'),
+    function muNDKey() {
+      const slug = prompt(T('DOI も NSR のキー番号もない文献の識別名(英数字)。例: Suzuki1975thesis',
+        'Short name for a source with neither DOI nor NSR keynumber (letters and digits), e.g. Suzuki1975thesis'),
       `${asciiLabel(firstAuthor(reference))}${referenceYear(reference) || ''}`);
       const name = slug ? asciiLabel(slug) : '';
       if (!name) return;
-      doc.meta.bibId = `10.1000/mund.${name}`;
+      doc.meta.bibId = `muND:${name}`;
       doi.value = doc.meta.bibId;
-      reference.DOI = doc.meta.bibId;
+      reference.id = doc.meta.bibId;
       edited = Object.keys(reference).length > 1;     // bibliographic data typed so far belong to it
       markDirty();
     }
@@ -159,10 +169,10 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
     }, CODES.map((c) => h('option', { value: c, selected: fileCode(doc) === c }, `${c} – ${CODE_TITLES[c]} (${TYPE_OF[c]})`)));
     controls.set('/datasetType', dataset);
 
-    const doi = textInput(doc.meta, 'bibId', markDirty, { placeholder: '10.1103/PhysRevC.35.2212' });
+    const doi = textInput(doc.meta, 'bibId', markDirty, { placeholder: 'DOI:10.1103/PhysRevC.35.2212' });
     doi.addEventListener('change', () => {
-      doi.value = doc.meta.bibId = doi.value.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:/i, '');
-      if (!edited) load(doc.meta.bibId);               // the bibliography entry of the new DOI, if there is one
+      doi.value = doc.meta.bibId = sourceText(doi.value);
+      if (!edited) load(doc.meta.bibId);               // the bibliography entry of the new source, if there is one
       renderFields();
       markDirty();
     });
@@ -171,10 +181,10 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
     const key = textInput(doc.meta, 'key', markDirty, { placeholder: 'setup-b' });
     controls.set('/meta/key', key);
 
-    const related = h('input', { type: 'text', spellcheck: 'false', placeholder: '10.48550/arXiv.2501.05897' });
+    const related = h('input', { type: 'text', spellcheck: 'false', placeholder: 'DOI:10.48550/arXiv.2501.05897' });
     related.value = (Array.isArray(doc.meta.relatedBibIds) ? doc.meta.relatedBibIds : []).join(', ');
     related.addEventListener('input', () => {
-      doc.meta.relatedBibIds = related.value.split(/[\s,;]+/).map((d) => d.trim()).filter(Boolean);
+      doc.meta.relatedBibIds = related.value.split(/[\s,;]+/).map(sourceText).filter(Boolean);
       markDirty();
     });
     controls.set('/meta/relatedBibIds', related);
@@ -189,15 +199,15 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
           field(T('データ種別 (datasetType)', 'Kind of data (datasetType)'), dataset, {
             hint: !isNew ? T('保存済みのファイルでは変更できません', 'Fixed once the file has been saved') : null,
           }),
-          h('div', { class: 'field' }, h('label', { for: 'reference-doi' }, 'DOI (bibId)'),
+          h('div', { class: 'field' }, h('label', { for: 'reference-doi' }, T('文献 (bibId)', 'Source (bibId)')),
             h('div', { class: 'input-row' }, Object.assign(doi, { id: 'reference-doi' }),
               h('button', { class: 'btn', type: 'button', onclick: lookup }, T('書誌情報を取得', 'Look up')),
-              h('button', { class: 'btn ghost', type: 'button', onclick: placeholderDoi, title: T('DOI のない文献に仮の識別子 10.1000/mund.… を付けます', 'Give a source without DOI a placeholder 10.1000/mund.…') }, T('DOI なし…', 'No DOI …'))),
-            lookupStatus),
+              h('button', { class: 'btn ghost', type: 'button', onclick: muNDKey, title: T('DOI も NSR のキー番号もない文献に muND:… の識別子を付けます', 'Name a source with neither DOI nor NSR keynumber muND:…') }, T('DOI なし…', 'No DOI …'))),
+            h('p', { class: 'hint' }, SOURCE_HINT()), lookupStatus),
           field(T('枝番 Key(任意)', 'Key (optional)'), key, {
             hint: T('1つの論文に測定条件の異なるメタデータを複数作る場合だけ使います', 'Only when one publication needs several metadata records (e.g. two set-ups)'),
           }),
-          field(T('関連 DOI(arXiv・訂正・データ等)', 'Related DOIs (arXiv, erratum, data …)'), related)),
+          field(T('関連する文献(arXiv・訂正・データ等の DOI)', 'Related sources (DOIs of arXiv, erratum, data …)'), related)),
         h('p', { class: 'computed-line' }, 'MetaID ', metaIdEl, ' ', metaSourceEl),
         h('details', { open: isNew || !firstAuthor(reference) },
           h('summary', null, T('書誌情報(文献データベース bibliography.json に記録されます)', 'Bibliographic data (kept in bibliography.json)')), fieldsEl)));
@@ -206,7 +216,7 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
   /** Show the MetaID that `doc` gets. */
   function refresh(doc) {
     const doi = String(doc.meta.bibId || '').trim();
-    const mid = isDoi(doi) ? expectedMetaId(doc) : null;
+    const mid = isBibId(doi) ? expectedMetaId(doc) : null;
     metaIdEl.textContent = mid || '—';
     metaSourceEl.textContent = mid ? `← ${ids.metaSource(doc.sublibrary, fileCode(doc), doc.meta.bibId, doc.meta.key)}` : '';
   }
@@ -214,7 +224,7 @@ export function referencePart({ workspace, controls, isDoi, markDirty, onTypeCha
   return {
     load,
     save,
-    /** The entry the bibliography holds for the DOI once saved. */
+    /** The entry the bibliography holds for the source once saved. */
     entry: () => reference,
     card,
     refresh,

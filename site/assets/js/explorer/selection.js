@@ -11,7 +11,7 @@
 // one are exactly those of the published file.
 
 import { CODES, TYPE_OF } from '../core/vocabulary.js';
-import { normalizeDoi } from '../core/ids.js';
+import { normalizeBibId } from '../core/ids.js';
 
 /**
  * The rows chosen by the filters of the explorer, in the order of the tables:
@@ -124,8 +124,8 @@ export function selectionJson({ version, rows, filters, citation, permalink, dat
   const { manifest } = version;
   const metaIds = new Set(rows.map((r) => r.entry.metaId));
   const meta = version.meta.filter((m) => metaIds.has(m.id));
-  const dois = new Set(rows.map((r) => normalizeDoi(r.entry.bibId)));
-  for (const m of meta) for (const doi of m.relatedBibIds || []) dois.add(normalizeDoi(doi));
+  const bibIds = new Set(rows.map((r) => normalizeBibId(r.entry.bibId)));
+  for (const m of meta) for (const bibId of m.relatedBibIds || []) bibIds.add(normalizeBibId(bibId));
   const { files, ...about } = manifest;
   const source = (files || []).find((f) => f.path === 'LT.json');
   return {
@@ -138,7 +138,7 @@ export function selectionJson({ version, rows, filters, citation, permalink, dat
     selection: { ...filters, entries: rows.length },
     manifest: about,
     source: source ? { path: `${version.root}LT.json`, bytes: source.bytes, sha256: source.sha256 } : null,
-    bibliography: version.bibliography.filter((b) => dois.has(normalizeDoi(b.DOI))),
+    bibliography: version.bibliography.filter((b) => bibIds.has(normalizeBibId(b.id))),
     meta,
     data: rows.map((r) => r.entry),
   };

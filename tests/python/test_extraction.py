@@ -263,7 +263,7 @@ class ServerTests(unittest.TestCase):
         result = ex.publish(self.repo, {"task": TASK})
         self.assertTrue(result["sent"])
         data_path = result["path"]
-        self.assertRegex(data_path, r"^data/LT/EXP/mundExtractionExample_[0-9a-f]{12}\.json$")
+        self.assertRegex(data_path, r"^data/LT/EXP/ExtractionExample_[0-9a-f]{12}\.json$")
         written = jsonfmt.loads((self.work / data_path).read_text(encoding="utf-8"))
         self.assertEqual(written["meta"]["facility"], "J-PARC (D1)")
         self.assertEqual([e["datasetId"] for e in written["data"]], result["datasetIds"])
@@ -276,7 +276,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((record["by"], record["contentHash"], record["path"]), ("Carol", VECTOR["contentHash"], data_path))
         self.assertEqual([e["datasetId"] for e in record["entries"]], result["datasetIds"])
         log = git(self.github, "log", "-1", "--format=%an|%s", "main")
-        self.assertEqual(log, "Carol|Publish extraction Example2026 to LT/EXP mundExtractionExample")
+        self.assertEqual(log, "Carol|Publish extraction Example2026 to LT/EXP ExtractionExample")
         self.assertEqual(git(self.github, "show", "main:" + data_path), (self.work / data_path).read_text(encoding="utf-8").rstrip("\n"))
         self.assertEqual([i for i in admin.Database.load(self.work).validate() if i.level == "error"], [])
 

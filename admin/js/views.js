@@ -40,7 +40,7 @@ export function renderDatasets(root, { workspace, navigate }, params) {
         cite: f.obj ? citeText(reference, f.meta.bibId) : '',
         count: f.data.length, elements, status: workspace.status(f.path), outdated: outdated.has(f.path),
         errors: own.filter((i) => i.level === 'error').length, warnings: own.filter((i) => i.level === 'warning').length,
-        doi: f.meta.bibId || '', facility: f.meta.facility || '',
+        bibId: f.meta.bibId || '', facility: f.meta.facility || '',
       };
     });
   }
@@ -49,7 +49,7 @@ export function renderDatasets(root, { workspace, navigate }, params) {
     const q = state.query.trim().toLowerCase();
     const all = rows();
     const shown = all.filter((r) => (!state.code || r.code === state.code) && (!state.unsaved || r.status !== 'unchanged')
-      && (!q || [r.label, r.cite, r.doi, r.path, r.facility, r.elements.join(' ')].join(' ').toLowerCase().includes(q)));
+      && (!q || [r.label, r.cite, r.bibId, r.path, r.facility, r.elements.join(' ')].join(' ').toLowerCase().includes(q)));
     panel.refresh();
     renderPills();
     replace(listEl,
@@ -60,7 +60,7 @@ export function renderDatasets(root, { workspace, navigate }, params) {
         h('tbody', null, shown.map((r) => h('tr', { class: 'selectable', onclick: () => navigate('edit', { path: r.path }) },
           h('td', { class: 'nowrap' }, h('i', { class: `ds-dot ${r.code}` }), ` ${r.code || '?'}`),
           h('td', null, h('a', { href: `#/edit?path=${encodeURIComponent(r.path)}`, onclick: (e) => e.stopPropagation() }, h('strong', null, r.label)),
-            h('div', { class: 'small muted' }, r.cite !== r.label ? r.cite : r.doi)),
+            h('div', { class: 'small muted' }, r.cite !== r.label ? r.cite : r.bibId)),
           h('td', { class: 'num' }, String(r.count)),
           h('td', { class: 'small' }, r.elements.length > 12 ? `${r.elements.slice(0, 12).join(' ')} … (${r.elements.length})` : r.elements.join(' ')),
           h('td', { class: 'small' }, r.facility),
@@ -396,8 +396,8 @@ export function renderHelp(root, { backend }) {
           'Press “Save”. When the checks pass, the change is recorded and sent to GitHub. The description is optional.'))),
       h('h2', null, T('覚えておくこと', 'Good to know')),
       h('ul', null,
-        h('li', null, T('入力した内容は、有効な DOI が入っていれば、保存するまでこのブラウザに残ります。保存していないファイルには「未保存」と表示され、画面上部の「未保存」から一覧できます。ツールを終了しても残りますが、ほかのブラウザからは見えないので、区切りのよいところで保存してください。',
-          'Once a valid DOI is given, what you type is kept in this browser until you save, also when the tool is stopped and started again. Files not saved yet are marked “not saved”; the “not saved” badge at the top lists them. Other browsers do not see them, so save at a good moment.')),
+        h('li', null, T('入力した内容は、有効な文献 (bibId) が入っていれば、保存するまでこのブラウザに残ります。保存していないファイルには「未保存」と表示され、画面上部の「未保存」から一覧できます。ツールを終了しても残りますが、ほかのブラウザからは見えないので、区切りのよいところで保存してください。',
+          'Once a valid source (bibId) is given, what you type is kept in this browser until you save, also when the tool is stopped and started again. Files not saved yet are marked “not saved”; the “not saved” badge at the top lists them. Other browsers do not see them, so save at a good moment.')),
         h('li', null, T('「未送信」は、保存したけれどまだ GitHub に届いていない変更の数です(オフラインのときなど)。「再送信」で送れます。',
           '“Not sent” counts saves that have not reached GitHub yet (for example while offline). “Send again” sends them.')),
         h('li', null, T('「再読み込み」で、ほかの人の変更を含む最新の状態にします。', '“Reload” brings in the latest state, including other people’s changes.')),

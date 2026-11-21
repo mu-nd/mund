@@ -16,7 +16,7 @@ let lang = initial();
 export const T = (ja, en) => (lang === 'ja' ? ja : en);
 export const getLang = () => lang;
 
-/** Label of a file's state in the workspace (see Workspace.status; 'new': a document without DOI yet). */
+/** Label of a file's state in the workspace (see Workspace.status; 'new': a document without a source yet). */
 export const statusLabel = (status) => ({
   unchanged: T('保存済み', 'saved'),
   modified: T('未保存', 'not saved'),

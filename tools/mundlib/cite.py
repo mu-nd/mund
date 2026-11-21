@@ -1,10 +1,15 @@
 """File labels and citation texts derived from a bibliography entry
 (twin of ``site/assets/js/core/cite.js``; shared cases in ``tests/vectors/cite.json``).
 
-A bibliography entry is a cached subset of the Crossref record of a DOI and
-uses Crossref's member names::
+The source of a metadata record (``bibId``) is named by its DOI
+(``DOI:10.1103/PhysRevC.35.2212``); a source without one by its keynumber in
+Nuclear Science References (``NSR:1987SU06``); a source found in neither by a
+muND key (``muND:Suzuki1975thesis``).
 
-    {"DOI": "...", "author": [{"family": "...", "given": "..."}], "title": ["..."],
+A bibliography entry is found by its ``id``, the bibId.  It is a cached subset
+of the Crossref record of the source and uses Crossref's member names::
+
+    {"id": "DOI:...", "author": [{"family": "...", "given": "..."}], "title": ["..."],
      "container-title": ["..."], "short-container-title": ["..."], "volume": "...",
      "page": "...", "article-number": "...", "published": {"date-parts": [[1987, 6, 1]]}}
 """
@@ -14,7 +19,12 @@ import re
 import unicodedata
 from typing import Optional
 
-PLACEHOLDER_DOI_PREFIX = "10.1000/"
+#: The prefix of each form of a bibId, with the form of the name after it.
+BIB_ID_FORMS = (
+    ("DOI", re.compile(r"^10\.[0-9]{4,9}/[^\s;]+$")),
+    ("NSR", re.compile(r"^[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}$")),
+    ("muND", re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")),
+)
 
 
 def _dict(value) -> dict:
@@ -56,16 +66,32 @@ def reference_year(reference: Optional[dict]):
         return None
 
 
-def is_placeholder_doi(doi) -> bool:
-    """``10.1000/...``: the identifier of a source without a DOI."""
-    return str(doi or "").lower().startswith(PLACEHOLDER_DOI_PREFIX)
+def _split_bib_id(bib_id):
+    prefix, sep, name = str(bib_id or "").strip().partition(":")
+    return (prefix, name) if sep else ("", prefix)
+
+
+def bib_kind(bib_id) -> str:
+    """``DOI``, ``NSR`` or ``muND``: the prefix of a valid bibId; ``""`` when
+    ``bib_id`` has none of these forms."""
+    prefix, name = _split_bib_id(bib_id)
+    for kind, pattern in BIB_ID_FORMS:
+        if kind == prefix and pattern.match(name):
+            return kind
+    return ""
+
+
+def bib_name(bib_id) -> str:
+    """The part after the prefix: the DOI, the keynumber or the name of the muND key."""
+    return _split_bib_id(bib_id)[1] if bib_kind(bib_id) else str(bib_id or "").strip()
 
 
 def file_label(meta: dict, reference: Optional[dict] = None) -> str:
     """Readable part of a file name: ``Suzuki1987``.
 
     First author and year when the bibliography knows the reference, otherwise
-    the last part of the DOI.  The MetaID that follows it identifies the file.
+    the last part of the name of the bibId.  The MetaID that follows it
+    identifies the file.
     """
     family = ascii_label(first_author(reference))
     year = reference_year(reference)
@@ -73,7 +99,7 @@ def file_label(meta: dict, reference: Optional[dict] = None) -> str:
         return "%s%d" % (family, year)
     if family:
         return family
-    tail = str(_dict(meta).get("bibId", "")).split("/")[-1]
+    tail = bib_name(_dict(meta).get("bibId", "")).split("/")[-1]
     return ascii_label(tail) or "file"
 
 

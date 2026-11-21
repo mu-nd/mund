@@ -4,7 +4,7 @@
 // Every edit marks the document dirty; a quarter of a second later (and when
 // the page is left) the document is stored as a draft in the workspace under
 // its canonical file name.  The 保存 (save) card above the form saves all
-// drafts at once.  A document is stored only once it has a valid DOI, and
+// drafts at once.  A document is stored only once it has a valid bibId, and
 // never over another registered file.
 //
 // The entries are followed by datasetId (document.js, IdTracker).  When the
@@ -20,7 +20,7 @@ import { T, statusLabel, issueText } from './i18n.js';
 import { renderDiff, diffLines, diffStats } from './diff.js';
 import { jsonPane } from './monaco.js';
 import { field, textInput, markIssues } from './form.js';
-import { isDoi, IdTracker, datasetIdsOf, formProblem, referencesTo, entryLabel, fileName } from './document.js';
+import { isBibId, IdTracker, datasetIdsOf, formProblem, referencesTo, entryLabel, fileName } from './document.js';
 import { referencePart } from './reference.js';
 import { dataGrid } from './grid.js';
 import { savePanel } from './save.js';
@@ -51,13 +51,13 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
 
   const meta = () => (isObject(doc.meta) ? doc.meta : {});
   const bibId = () => String(meta().bibId || '').trim();
-  const validDoi = (text) => isDoi(text, workspace.db.schemaFor(doc.format));
+  const validBibId = (text) => isBibId(text, workspace.db.schemaFor(doc.format));
   const isNew = () => !path || workspace.baseline(path) === null;
   const currentText = () => workspace.db.canonicalText(doc);
   const savedIds = () => datasetIdsOf(path ? workspace.baseline(path) : null);
   const pendingChanges = () => (identity && !blocked ? identity.changes.filter((c) => !c.choice) : []);
 
-  const ref = referencePart({ workspace, controls, isDoi: validDoi, markDirty, onTypeChange: renderForm });
+  const ref = referencePart({ workspace, controls, isBibId: validBibId, markDirty, onTypeChange: renderForm });
   const grid = dataGrid({ workspace, dialog, markDirty });
   const panel = savePanel({ workspace }, {
     prepare: () => handle.flush(),
@@ -94,7 +94,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
       return false;
     }
     const doi = bibId();
-    if (!validDoi(doi) || expectedMetaId(doc) === null) {
+    if (!validBibId(doi) || expectedMetaId(doc) === null) {
       blocked = 'incomplete';
       return false;
     }
@@ -216,8 +216,8 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
         changes.length ? h('span', { class: `tag ${pending ? 'warn' : 'good'}` }, pending ? T(`未選択 ${pending} 行`, `${pending} to choose`) : T('選択済み', 'all chosen')) : null),
       h('div', { class: 'card-body stack' },
         changes.length ? [
-          h('p', null, T('元素・質量数・Key(またはファイルの DOI・Key)を変えたため、次の行の datasetId が変わります。行ごとにどちらかを選んでください。選ぶまでは保存できず、このページから移ることもできません(元に戻すと、この表示は消えます)。',
-            'Element, mass number or key (or the DOI or key of the file) changed, so the datasetId of these rows changes. Choose for each row; until then nothing can be saved and the page cannot be left (changing it back removes the question).')),
+          h('p', null, T('元素・質量数・Key(またはファイルの文献・Key)を変えたため、次の行の datasetId が変わります。行ごとにどちらかを選んでください。選ぶまでは保存できず、このページから移ることもできません(元に戻すと、この表示は消えます)。',
+            'Element, mass number or key (or the source or key of the file) changed, so the datasetId of these rows changes. Choose for each row; until then nothing can be saved and the page cannot be left (changing it back removes the question).')),
           h('ul', { class: 'small id-help' },
             h('li', null, h('strong', null, T('同じデータの訂正', 'Correction of the same data')),
               T(' — 入力の誤りを直しただけで、同じ測定値・計算値です。以前の ID はこの行の legacyIds に残り、この行を「元データ」に挙げているデータ(キュレーション・評価データ)は新しい ID に付け替えられて、一緒に保存されます。',
@@ -334,12 +334,12 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     const errors = issues.filter((i) => i.level === 'error').length;
     replace(issuesEl,
       h('div', { class: 'card-head' }, h('h2', null, T('チェック結果', 'Checks')),
-        h('span', { class: `tag ${errors ? 'bad' : 'good'}` }, !path ? T('DOI 未入力', 'no DOI yet')
+        h('span', { class: `tag ${errors ? 'bad' : 'good'}` }, !path ? T('文献 未入力', 'no source yet')
           : errors ? T(`エラー ${errors} 件`, `${errors} error(s)`)
             : issues.length ? T(`警告 ${issues.length} 件`, `${issues.length} warning(s)`) : T('問題なし', 'all good'))),
       items.length ? h('ul', { class: 'issue-list' }, items)
         : h('div', { class: 'card-body muted small' }, path ? T('スキーマ・ID・参照関係のチェックをすべて通過しています。', 'Format, identifiers and references are all fine.')
-          : T('DOI を入力するとチェックが始まります。', 'Checks start once a DOI is entered.')));
+          : T('文献(DOI など)を入力するとチェックが始まります。', 'Checks start once the source (DOI …) is entered.')));
   }
 
   // ---- header -------------------------------------------------------------------------
@@ -358,11 +358,11 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
         'meta or data does not have the right shape, so what you typed cannot be kept. Correct it in the JSON tab, or use “Discard changes”.');
     }
     if (blocked === 'incomplete') {
-      return T('有効な DOI(とデータ種別)を入力してください。それまでは入力した内容を保持できないため、このページから移ることも保存することもできません。不要なら「変更を破棄」を押してください。',
-        'Please give a valid DOI (and kind of data). Until then what you typed cannot be kept, so you can neither leave this page nor save. Use “Discard changes” if you do not need it.');
+      return T('有効な文献(DOI など)とデータ種別を入力してください。それまでは入力した内容を保持できないため、このページから移ることも保存することもできません。不要なら「変更を破棄」を押してください。',
+        'Please give a valid source (DOI …) and kind of data. Until then what you typed cannot be kept, so you can neither leave this page nor save. Use “Discard changes” if you do not need it.');
     }
-    return T(`この文献(同じ DOI・データ種別・Key)は登録済みです: ${blocked.taken}`,
-      `This publication (same DOI, kind of data and key) is registered already: ${blocked.taken}`);
+    return T(`この文献(同じ文献・データ種別・Key)は登録済みです: ${blocked.taken}`,
+      `This publication (same source, kind of data and key) is registered already: ${blocked.taken}`);
   }
 
   function renderNotice() {
@@ -394,7 +394,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     const state = path ? workspace.status(path) : 'new';
     statusEl.textContent = statusLabel(state);
     statusEl.className = `tag ${state}`;
-    pathEl.textContent = path || T('(DOI を入力すると保存先が決まります)', '(enter a DOI to create the file)');
+    pathEl.textContent = path || T('(文献を入力すると保存先が決まります)', '(enter the source to create the file)');
     historyEl.hidden = !path;
     if (path) historyEl.href = `#/history?path=${encodeURIComponent(path)}`;
     renderNotice();

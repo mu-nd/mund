@@ -229,7 +229,7 @@ export function register(h, modules, env) {
     for (const [path, text] of Object.entries(files)) db.setFile(path, text);
     const p = ex.publicationPreview(s, db);
     t.equal(p.exists, false);
-    t.ok(/^data\/LT\/EXP\/mundExtractionExample_[0-9a-f]{12}\.json$/.test(p.path), p.path);
+    t.ok(/^data\/LT\/EXP\/ExtractionExample_[0-9a-f]{12}\.json$/.test(p.path), p.path);
     t.equal(p.entries.length, 4);
     t.ok(p.entries.every((e) => /^[0-9a-f]{12}$/.test(e.datasetId) && e.status === 'new'));
     t.equal(jsonfmt.compact(p.entries[1].entry), '{"datasetId":"' + p.entries[1].datasetId

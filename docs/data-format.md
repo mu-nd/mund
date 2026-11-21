@@ -16,7 +16,7 @@ sub-library   XR | LT | ES | BR
 datasetType   experiment | theory | curated | evaluated      (directories EXP | TH | CUR | EVAL)
 metadata      one record per publication (per set-up, if a key is used)   -> MetaID
 data entry    one quantity of one nuclide, refers to a metadata record     -> datasetId (DataID)
-bibliography  one record per DOI (bibId), cached from Crossref
+bibliography  one record per source (bibId), cached from Crossref for a DOI
 ```
 
 Data, metadata ("experimental condition") and bibliography are separate
@@ -39,10 +39,10 @@ The four dataset types are different kinds of data, not stages of one record:
 ## 2. Repository layout
 
 ```
-data/LT/EXP/Suzuki1987_96f2c4a2ddaf.json      <FirstAuthor><Year>_<MetaID>.json
-data/LT/CUR/unpublished_591344c27b81.json
-data/LT/EVAL/Iwamoto2025_c93df5b12b00.json
-data/master/bibliography.json                  references, by DOI
+data/LT/EXP/Suzuki1987_6c7ebc35077d.json      <FirstAuthor><Year>_<MetaID>.json
+data/LT/CUR/unpublished_15fd4fea826c.json
+data/LT/EVAL/Iwamoto2025_194f28ccc0dc.json
+data/master/bibliography.json                  references, by bibId
 data/master/facilities.json                    facilities and beam lines
 data/master/nuclides.json                      element symbols, mass-number ranges
 data/master/huff_factors.json, constants.json  parameters of the conversions
@@ -64,7 +64,7 @@ they are written to `data/` (`schema/v1/extraction-*.schema.json`,
 | `data/master/constants.json` | `muND/constants/1` | `constants.schema.json` |
 
 The part of the file name before the underscore is a reading aid (first
-author and year, or the last part of the DOI); any label of letters, digits,
+author and year, or the last part of the bibId); any label of letters, digits,
 `.` and `-` is accepted. Only the MetaID identifies the file.
 
 ## 3. An LT file
@@ -75,9 +75,9 @@ author and year, or the last part of the DOI); any label of letters, digits,
   "sublibrary": "LT",
   "datasetType": "experiment",
   "meta": {
-    "id": "dcb3b051457e",
-    "bibId": "10.1103/vl7z-rzp8",
-    "relatedBibIds": ["10.48550/arXiv.2501.05897"],
+    "id": "4d2ed5c83736",
+    "bibId": "DOI:10.1103/vl7z-rzp8",
+    "relatedBibIds": ["DOI:10.48550/arXiv.2501.05897"],
     "facility": "J-PARC (D1)",
     "method": "electron",
     "beam": "…",
@@ -85,8 +85,8 @@ author and year, or the last part of the DOI); any label of letters, digits,
     "detector": "…"
   },
   "data": [
-    {"datasetId": "e2551c5951a7", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}},
-    {"datasetId": "4abe86ca167b", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 751.6, "unit": "ns", "uncertainties": [{"source": "statistical", "value": 0.8}, {"source": "systematic", "value": 0.7}]}}, "key": "plate", "comment": "Target: self-supported plate"}
+    {"datasetId": "e489422fdeb4", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}},
+    {"datasetId": "82fe1a2014b1", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 751.6, "unit": "ns", "uncertainties": [{"source": "statistical", "value": 0.8}, {"source": "systematic", "value": 0.7}]}}, "key": "plate", "comment": "Target: self-supported plate"}
   ]
 }
 ```
@@ -99,9 +99,9 @@ form.)
 | member | | meaning |
 |---|---|---|
 | `id` | required | MetaID |
-| `bibId` | required | main reference: its DOI, without `https://doi.org/`. Sources without DOI: placeholder `10.1000/mund.<name>` |
+| `bibId` | required | main reference: its DOI as `DOI:<DOI>` (`DOI:10.1103/vl7z-rzp8`); without a DOI, its keynumber in [Nuclear Science References](https://www.nndc.bnl.gov/nsr/) as `NSR:<keynumber>` (`NSR:1987SU06`); found in neither, a muND key `muND:<name>` (`muND:Suzuki1975thesis`) |
 | `key` | optional | separates several metadata records of one publication |
-| `relatedBibIds` | optional | arXiv version, erratum, data repository … |
+| `relatedBibIds` | optional | arXiv version, erratum, data repository … (the same forms as `bibId`) |
 | `facility` | experiment only, required | short name from `data/master/facilities.json` (`Unknown` exists) |
 | `method` | optional | experiment: what was detected (electron, gamma, neutron, charged particle, fission fragment); theory: model or code; curated / evaluated: procedure, including the constants and Huff factors it used |
 | `beam`, `target`, `detector` | experiment only, optional | short summaries written for this database from the source — not quotations and not the source itself |
@@ -172,17 +172,17 @@ a value stay empty.
 {
   "format": "muND/bibliography/1",
   "references": [
-    {"DOI": "10.1103/PhysRevC.35.2212", "type": "journal-article", "author": [{"family": "Suzuki", "given": "T."}, {"family": "Measday", "given": "D. F."}, {"family": "Roalsvig", "given": "J. P."}], "title": ["Total nuclear capture rates for negative muons"], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "issue": "6", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}}
+    {"id": "DOI:10.1103/PhysRevC.35.2212", "type": "journal-article", "author": [{"family": "Suzuki", "given": "T."}, {"family": "Measday", "given": "D. F."}, {"family": "Roalsvig", "given": "J. P."}], "title": ["Total nuclear capture rates for negative muons"], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "issue": "6", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}}
   ]
 }
 ```
 
-An entry is a cached subset of the Crossref record of the DOI and keeps
-Crossref's member names and shapes (`title` and `container-title` are lists,
-the date is `published.date-parts`). A source without DOI gets a hand-made
-entry of the same shape under its placeholder DOI. The data entry tool fills
-the cache when a DOI is looked up, so the published site does not depend on
-Crossref.
+An entry is found by its `id`, the bibId of the source. It is a cached subset
+of the Crossref record and keeps Crossref's member names and shapes (`title`
+and `container-title` are lists, the date is `published.date-parts`). An entry
+of an NSR keynumber or a muND key is written by hand (from the NSR page for a
+keynumber), and `URL` says where to find a source named by a muND key. The data entry tool fills the cache when
+a DOI is looked up, so the published site does not depend on Crossref.
 
 ## 4. Canonical form
 
@@ -222,10 +222,10 @@ and the work area `extraction/` (its checks: [`extraction.ja.md`](extraction.ja.
 | `E_DUPLICATE_CONSTANT`, `E_CONSTANT_MISSING`, `E_CONSTANT_UNIT`, `E_CONSTANT_VALUE` | `constants.json`: a name listed twice; `mu_plus_lifetime` missing, not in `ns`, or not positive |
 | `E_DUPLICATE_HUFF` | `huff_factors.json`: an element or a nuclide listed twice |
 | `E_UNCERTAINTY_TOTAL` | more than one uncertainty with the source `total` |
-| `E_FACILITY`, `E_DUPLICATE_FACILITY`, `E_DUPLICATE_REFERENCE` | facility not in the master list / listed twice; DOI listed twice in the bibliography |
+| `E_FACILITY`, `E_DUPLICATE_FACILITY`, `E_DUPLICATE_REFERENCE` | facility not in the master list / listed twice; a bibId listed twice in the bibliography |
 | `W_ORIGINAL_CHANGED` | warning: an original entry changed after the derived value was made from it (check the derived value again) |
 | `W_ORIGINAL_LEGACY` | warning: `originalData` names an earlier identifier; write the current one |
-| `W_NO_REFERENCE`, `W_MASS_RANGE` | warnings: no bibliography entry for a DOI (placeholders `10.1000/…` excepted); unusual mass number |
+| `W_NO_REFERENCE`, `W_MASS_RANGE` | warnings: no bibliography entry for a DOI or an NSR keynumber (a muND key may have none); unusual mass number |
 
 The same checks run in the browser (data entry tool); both implementations
 are tested against the cases in `tests/vectors/cases.json`.
@@ -251,7 +251,7 @@ file per element, nuclide, entry and source for programs ([API](api.md)).
 In `LT.json` every entry is self-contained:
 
 ```json
-{"datasetId": "e2551c5951a7", "datasetType": "experiment", "metaId": "dcb3b051457e", "bibId": "10.1103/vl7z-rzp8", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}}
+{"datasetId": "e489422fdeb4", "datasetType": "experiment", "metaId": "4d2ed5c83736", "bibId": "DOI:10.1103/vl7z-rzp8", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}}
 ```
 
 `metaId` names the metadata record of the entry (in `meta`), for all four

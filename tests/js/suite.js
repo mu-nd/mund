@@ -51,7 +51,7 @@ export function register(h, modules, env) {
     const vectors = await json('vectors', 'ids.json');
     t.ok(vectors.meta.length > 0);
     for (const v of vectors.meta) {
-      t.equal(ids.metaId(v.sublibrary, v.code, v.doi, v.key), v.id, JSON.stringify(v));
+      t.equal(ids.metaId(v.sublibrary, v.code, v.bibId, v.key), v.id, JSON.stringify(v));
     }
   });
 
@@ -64,11 +64,11 @@ export function register(h, modules, env) {
   });
 
   h.test('ids: hash source strings and normalisation', async (t) => {
-    t.equal(ids.metaSource('LT', 'EXP', ' 10.1103/vl7z-rzp8; 10.48550/arXiv.2501.05897 '),
-      'LT|EXP-META|10.1103/VL7Z-RZP8');
-    t.equal(ids.metaSource('LT', 'CUR', '10.1000/unpublished', ' b '), 'LT|CUR-META|10.1000/UNPUBLISHED|B');
-    t.equal(ids.dataSource('LT', 'EXP', 'Al', 27, 'dcb3b051457e', 'plate'), 'LT|EXP|Al|27000|dcb3b051457e|PLATE');
-    t.equal(ids.dataSource('LT', 'EXP', 'Mg', 0, 'dcb3b051457e'), 'LT|EXP|Mg|0|dcb3b051457e');
+    t.equal(ids.metaSource('LT', 'EXP', ' DOI:10.1103/vl7z-rzp8; DOI:10.48550/arXiv.2501.05897 '),
+      'LT|EXP-META|DOI:10.1103/VL7Z-RZP8');
+    t.equal(ids.metaSource('LT', 'CUR', 'muND:unpublished', ' b '), 'LT|CUR-META|MUND:UNPUBLISHED|B');
+    t.equal(ids.dataSource('LT', 'EXP', 'Al', 27, '4d2ed5c83736', 'plate'), 'LT|EXP|Al|27000|4d2ed5c83736|PLATE');
+    t.equal(ids.dataSource('LT', 'EXP', 'Mg', 0, '4d2ed5c83736'), 'LT|EXP|Mg|0|4d2ed5c83736');
     const masses = [['106.5', '106500'], [27, '27000'], ['27.0', '27000'], [0, '0'], ['0.0005', '1'],
       ['0.0004', '0'], ['238', '238000'], ['1e2', '100000']];
     for (const [input, expected] of masses) t.equal(ids.normalizeMass(input), expected, `mass ${input}:`);
@@ -138,7 +138,7 @@ export function register(h, modules, env) {
     const row = (extra = {}) => ({ datasetId: '0123456789ab', nuclide: { element: 'Si', mass: 28, isomer: 0 },
       observable: { kind: 'lifetime', lifetime: value() }, ...extra });
     const doc = (rows = [row()], extra = {}) => ({ format: 'muND/LT/1', sublibrary: 'LT', datasetType: 'experiment',
-      meta: { id: '0123456789ab', bibId: '10.1234/x', facility: 'A' }, data: rows, ...extra });
+      meta: { id: '0123456789ab', bibId: 'DOI:10.1234/x', facility: 'A' }, data: rows, ...extra });
     t.deepEqual(codes(doc()), []);
     t.deepEqual(codes(doc([row()], { meta: { id: '0123456789ab', bibId: '10.1/x', facility: 'A' } })), ['/meta/bibId:pattern']);
     t.deepEqual(codes(doc([row({ nuclide: { element: 'Si', mass: 28.5, isomer: 0 } })])), ['/data/0/nuclide/mass:type']);
@@ -159,21 +159,21 @@ export function register(h, modules, env) {
 
     const bib = await json('schema', 'bibliography.schema.json');
     const bibCodes = (ref) => schema.validate({ format: 'muND/bibliography/1', references: [ref] }, bib).map((e) => `${e.pointer}:${e.keyword}`);
-    t.deepEqual(bibCodes({ DOI: '10.1103/PhysRevC.35.2212', author: [{ family: 'Suzuki', given: 'T.' }], title: ['x'],
+    t.deepEqual(bibCodes({ id: 'DOI:10.1103/PhysRevC.35.2212', author: [{ family: 'Suzuki', given: 'T.' }], title: ['x'],
       'container-title': ['Physical Review C'], volume: '35', page: '2212-2224', published: { 'date-parts': [[1987, 6, 1]] } }), []);
     t.deepEqual(bibCodes({ title: ['x'] }), ['/references/0:required']);
-    t.deepEqual(bibCodes({ DOI: '10.1234/x', title: 'not a list' }), ['/references/0/title:type']);
+    t.deepEqual(bibCodes({ id: 'DOI:10.1234/x', title: 'not a list' }), ['/references/0/title:type']);
   });
 
   h.test('schema: normalisation orders keys and drops empty members', async (t) => {
     const s = await json('schema', 'lt.schema.json');
     const obj = jsonfmt.parse('{"data": [{"comment": " ", "key": "", "zzz": 1, "observable": {"lifetime": {"uncertainties": [], '
       + '"unit": "ns", "value": 1.0}, "kind": "lifetime"}, "nuclide": {"isomer": 0, "mass": 0, "element": " Si "}, "datasetId": "x"}], '
-      + '"meta": {"comment": "", "bibId": "10.1234/x", "id": "m", "relatedBibIds": []}, "datasetType": "experiment", '
+      + '"meta": {"comment": "", "bibId": "DOI:10.1234/x", "id": "m", "relatedBibIds": []}, "datasetType": "experiment", '
       + '"sublibrary": "LT", "format": "muND/LT/1"}');
     const out = schema.normalize(obj, s);
     t.deepEqual(Object.keys(out), ['format', 'sublibrary', 'datasetType', 'meta', 'data']);
-    t.deepEqual(out.meta, { id: 'm', bibId: '10.1234/x' });
+    t.deepEqual(out.meta, { id: 'm', bibId: 'DOI:10.1234/x' });
     t.deepEqual(Object.keys(out.data[0]), ['datasetId', 'nuclide', 'observable', 'zzz']);
     t.deepEqual(out.data[0].nuclide, { element: 'Si', mass: 0, isomer: 0 });
     t.deepEqual(Object.keys(out.data[0].observable.lifetime), ['value', 'unit', 'uncertainties']);
@@ -210,19 +210,19 @@ export function register(h, modules, env) {
     t.deepEqual(db.sortedFiles().map((f) => f.code), ['CUR', 'EVAL', 'EXP']);
     for (const f of db.sortedFiles()) t.equal(database.filePath(f.obj, db.reference(f.meta.bibId)), f.path);
     t.equal(db.zOf('Si'), 14);
-    t.equal(db.reference('10.1103/VL7Z-RZP8').author[0].family, 'Mizuno', 'DOIs are compared case-insensitively');
+    t.equal(db.reference('DOI:10.1103/VL7Z-RZP8').author[0].family, 'Mizuno', 'DOIs are compared case-insensitively');
     t.ok(database.isDataFilePath('data/LT/EXP/x_0123456789ab.json'));
     t.ok(!database.isDataFilePath('data/LT/README.md'));
     t.ok(!database.isDataFilePath('data/master/facilities.json'));
   });
 
   h.test('database: assignIds', async (t) => {
-    const obj = { format: 'muND/LT/1', sublibrary: 'LT', datasetType: 'experiment', meta: { bibId: '10.1103/vl7z-rzp8' },
+    const obj = { format: 'muND/LT/1', sublibrary: 'LT', datasetType: 'experiment', meta: { bibId: 'DOI:10.1103/vl7z-rzp8' },
       data: [{ nuclide: { element: 'Al', mass: 27, isomer: 0 }, key: 'plate' }, { nuclide: { element: 'Mg', mass: 0, isomer: 0 } }] };
     database.assignIds(obj);
-    t.equal(obj.meta.id, 'dcb3b051457e');
-    t.equal(obj.data[0].datasetId, '343adc036597');
-    t.equal(obj.data[1].datasetId, '5fb28c42563b');
+    t.equal(obj.meta.id, '4d2ed5c83736');
+    t.equal(obj.data[0].datasetId, 'dd91adba8444');
+    t.equal(obj.data[1].datasetId, '09c1551803d0');
     const partial = { ...obj, data: [{ nuclide: { isomer: 0 } }] };
     database.assignIds(partial);
     t.equal(partial.data[0].datasetId, undefined, 'an entry without element and mass is left to validation');
@@ -287,13 +287,25 @@ export function register(h, modules, env) {
       { family: 'Roalsvig', given: 'J. P.' }], title: ['Total nuclear capture rates for negative muons'],
     published: { 'date-parts': [[1987, 6, 1]] } };
     t.equal(cite.citeLabel(ref), 'Suzuki1987');
-    t.equal(cite.citeLabel(null, '10.1000/unpublished'), '10.1000/unpublished');
+    t.equal(cite.citeLabel(null, 'muND:unpublished'), 'unpublished');
+    t.equal(cite.citeLabel(null, 'NSR:1987SU06'), 'NSR:1987SU06');
     t.equal(cite.authorList(ref), 'T. Suzuki, D. F. Measday and J. P. Roalsvig');
     t.equal(cite.referenceTitle(ref), 'Total nuclear capture rates for negative muons');
-    t.equal(database.filePath({ sublibrary: 'LT', datasetType: 'curated', meta: { id: 'abc', bibId: '10.1000/unpublished' } }, null),
+    t.equal(database.filePath({ sublibrary: 'LT', datasetType: 'curated', meta: { id: 'abc', bibId: 'muND:unpublished' } }, null),
       'data/LT/CUR/unpublished_abc.json');
-    t.equal(cite.doiUrl('10.1000/unpublished'), null);
-    t.equal(cite.doiUrl('10.1016/0375-9474(88)90330-2'), 'https://doi.org/10.1016/0375-9474(88)90330-2');
+    // the three forms of a bibId and their links
+    t.deepEqual(['DOI:10.1103/PhysRevC.35.2212', 'NSR:1987SU06', 'muND:Suzuki1975thesis', 'NSR:1987', 'mund:x',
+      'https://doi.org/10.1103/x', '10.1103/x', 'doi:10.1103/x', 'muNDx'].map(cite.bibKind), ['DOI', 'NSR', 'muND', '', '', '', '', '', '']);
+    t.deepEqual(['DOI:10.1103/x:y', 'NSR:1987SU06', 'muND:unpublished', '10.1103/x'].map(cite.bibName),
+      ['10.1103/x:y', '1987SU06', 'unpublished', '10.1103/x']);
+    t.equal(cite.bibUrl('DOI:10.1016/0375-9474(88)90330-2'), 'https://doi.org/10.1016/0375-9474(88)90330-2');
+    t.equal(cite.bibUrl('NSR:1987SU06'), 'https://www.nndc.bnl.gov/nsr/?search-type=keynumber&key=1987SU06');
+    t.equal(cite.bibUrl('muND:unpublished'), null);
+    // a source named by a muND key is linked by the URL of its bibliography entry
+    t.equal(cite.sourceUrl('muND:Suzuki1975thesis', { id: 'muND:Suzuki1975thesis', URL: 'https://example.org/thesis.pdf' }),
+      'https://example.org/thesis.pdf');
+    t.equal(cite.sourceUrl('muND:unpublished', null), null);
+    t.equal(cite.sourceUrl('DOI:10.1103/PhysRevC.35.2212', { URL: 'https://example.org/x' }), 'https://doi.org/10.1103/PhysRevC.35.2212');
   });
 
   h.test('format: values as given and derived values', async (t) => {

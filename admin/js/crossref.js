@@ -1,8 +1,8 @@
 // Bibliographic data of a DOI, from Crossref (journal articles) or DataCite
 // (arXiv, data repositories).  Only the DOI is sent.
 //
-// The result is a bibliography entry: a subset of the Crossref record with
-// Crossref's member names (see schema/v1/bibliography.schema.json).
+// The result is a bibliography entry (id DOI:<DOI>): a subset of the Crossref
+// record with Crossref's member names (see schema/v1/bibliography.schema.json).
 
 function clean(text) {
   return String(text || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -20,7 +20,7 @@ async function getJson(url) {
 const list = (value) => (Array.isArray(value) ? value : value ? [value] : []).map(clean).filter(Boolean);
 
 function fromCrossref(message, doi) {
-  const ref = { DOI: doi };
+  const ref = { id: `DOI:${doi}` };
   if (message.type) ref.type = String(message.type);
   const authors = (message.author || []).map((a) => {
     if (a.family) return a.given ? { family: clean(a.family), given: clean(a.given) } : { family: clean(a.family) };
@@ -42,7 +42,7 @@ function fromCrossref(message, doi) {
 }
 
 function fromDataCite(attributes, doi) {
-  const ref = { DOI: doi };
+  const ref = { id: `DOI:${doi}` };
   const kind = attributes.types && (attributes.types.resourceTypeGeneral || attributes.types.resourceType);
   if (kind) ref.type = String(kind).toLowerCase();
   const authors = (attributes.creators || []).map((c) => {

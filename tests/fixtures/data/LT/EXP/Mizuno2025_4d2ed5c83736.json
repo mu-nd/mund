@@ -1,0 +1,27 @@
+{
+  "format": "muND/LT/1",
+  "sublibrary": "LT",
+  "datasetType": "experiment",
+  "meta": {
+    "id": "4d2ed5c83736",
+    "bibId": "DOI:10.1103/vl7z-rzp8",
+    "relatedBibIds": ["DOI:10.48550/arXiv.2501.05897"],
+    "facility": "J-PARC (D1)",
+    "method": "electron",
+    "beam": "Negative muons of 32 MeV/c, about 3e4 per second (proton beam power about 900 kW).",
+    "target": "Enriched 28Si, 29Si and 30Si as metal chippings in acrylic cases (about 1.0 g/cm2), behind a 40 mm lead collimator, with a silver mask and backing plate. Reference targets: natSi (self-supported plate; powder in a case), natMg, 27Al (self-supported plate; plate in a case), 55Mn and natAg. See Table I of the reference.",
+    "detector": "Decay electrons detected with the Kalliope muSR spectrometer (40 units, each with 16 pairs of plastic scintillators) in zero field. Electron times recorded from -7 to 57 us relative to the beam pulse."
+  },
+  "data": [
+    {"datasetId": "09c1551803d0", "nuclide": {"element": "Mg", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 1065.5, "unit": "ns", "uncertainties": [{"source": "total", "value": 2.0}]}}, "legacyIds": ["5fb28c42563b"]},
+    {"datasetId": "dd91adba8444", "nuclide": {"element": "Al", "mass": 27, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 863.7, "unit": "ns", "uncertainties": [{"source": "total", "value": 1.0}]}}, "key": "plate", "comment": "Target: self-supported plate", "legacyIds": ["343adc036597"]},
+    {"datasetId": "9f594e0f6502", "nuclide": {"element": "Al", "mass": 27, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 862.5, "unit": "ns", "uncertainties": [{"source": "total", "value": 8.1}]}}, "key": "case", "comment": "Target: plate in case", "legacyIds": ["3976d87eadb1"]},
+    {"datasetId": "e489422fdeb4", "nuclide": {"element": "Si", "mass": 28, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}, "legacyIds": ["e2551c5951a7"]},
+    {"datasetId": "ca4139686296", "nuclide": {"element": "Si", "mass": 29, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 794.2, "unit": "ns", "uncertainties": [{"source": "total", "value": 3.5}]}}, "legacyIds": ["735e0e78bc31"]},
+    {"datasetId": "d34215fe02f0", "nuclide": {"element": "Si", "mass": 30, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 859.0, "unit": "ns", "uncertainties": [{"source": "total", "value": 2.7}]}}, "legacyIds": ["3fc99c56a5ad"]},
+    {"datasetId": "82fe1a2014b1", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 751.6, "unit": "ns", "uncertainties": [{"source": "total", "value": 1.0}]}}, "key": "plate", "comment": "Target: self-supported plate", "legacyIds": ["4abe86ca167b"]},
+    {"datasetId": "61cd0aea3016", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 749.8, "unit": "ns", "uncertainties": [{"source": "total", "value": 2.8}]}}, "key": "powder", "comment": "Target: powder in case", "legacyIds": ["33f450850ea3"]},
+    {"datasetId": "eddc6c665c1f", "nuclide": {"element": "Mn", "mass": 55, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 230.3, "unit": "ns", "uncertainties": [{"source": "total", "value": 4.5}]}}, "legacyIds": ["fecc9e6ba056"]},
+    {"datasetId": "143d0880aba0", "nuclide": {"element": "Ag", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime", "lifetime": {"value": 87.0, "unit": "ns", "uncertainties": [{"source": "total", "value": 0.5}]}}, "legacyIds": ["83dbd82cd84e"]}
+  ]
+}

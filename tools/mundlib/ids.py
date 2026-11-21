@@ -3,7 +3,7 @@
     MetaID = first 12 hex digits of SHA-256( UTF-8( meta_source ) )
     DataID = first 12 hex digits of SHA-256( UTF-8( data_source ) )
 
-    meta_source = "LT|{code}-META|{doi_norm}[|{key_norm}]"
+    meta_source = "LT|{code}-META|{bib_norm}[|{key_norm}]"
     data_source = "LT|{code}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
 
 ``[...]`` is appended only when a key is given; ``code`` is EXP, TH, CUR or
@@ -24,9 +24,10 @@ def _hash12(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:ID_LENGTH]
 
 
-def normalize_doi(doi: str) -> str:
-    """First entry of a ``;`` separated list, stripped, upper-cased."""
-    return str(doi).split(";")[0].strip().upper()
+def normalize_bib_id(bib_id: str) -> str:
+    """A bibId (``DOI:``, ``NSR:`` or ``muND:`` and a name): first entry of a
+    ``;`` separated list, stripped, upper-cased."""
+    return str(bib_id).split(";")[0].strip().upper()
 
 
 def normalize_key(key: Optional[str]) -> str:
@@ -52,8 +53,8 @@ def normalize_mass(mass) -> str:
     return str(int((d * 1000).to_integral_value(rounding=ROUND_HALF_UP)))
 
 
-def meta_source(sublibrary: str, code: str, doi: str, key: Optional[str] = None) -> str:
-    parts = [sublibrary, code + "-META", normalize_doi(doi)]
+def meta_source(sublibrary: str, code: str, bib_id: str, key: Optional[str] = None) -> str:
+    parts = [sublibrary, code + "-META", normalize_bib_id(bib_id)]
     k = normalize_key(key)
     if k:
         parts.append(k)
@@ -69,8 +70,8 @@ def data_source(sublibrary: str, code: str, element: str, mass, meta_id: str,
     return SEPARATOR.join(parts)
 
 
-def meta_id(sublibrary: str, code: str, doi: str, key: Optional[str] = None) -> str:
-    return _hash12(meta_source(sublibrary, code, doi, key))
+def meta_id(sublibrary: str, code: str, bib_id: str, key: Optional[str] = None) -> str:
+    return _hash12(meta_source(sublibrary, code, bib_id, key))
 
 
 def data_id(sublibrary: str, code: str, element: str, mass, meta_id: str,

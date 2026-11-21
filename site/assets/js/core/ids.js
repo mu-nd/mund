@@ -2,7 +2,7 @@
 // JavaScript twin of tools/mundlib/ids.py; both are checked against
 // tests/vectors/ids.json.
 //
-//   meta_source = "LT|{DataSet}-META|{doi_norm}[|{key_norm}]"
+//   meta_source = "LT|{DataSet}-META|{bib_norm}[|{key_norm}]"
 //   data_source = "LT|{DataSet}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
 //   ID          = first 12 hex digits of SHA-256(UTF-8(source))
 
@@ -13,9 +13,9 @@ const SEPARATOR = '|';
 
 const hash12 = (source) => sha256(source).slice(0, ID_LENGTH);
 
-/** First entry of a ';' separated list, trimmed, upper-cased. */
-export function normalizeDoi(doi) {
-  return String(doi).split(';')[0].trim().toUpperCase();
+/** A bibId ('DOI:', 'NSR:' or 'muND:' and a name): first entry of a ';' separated list, trimmed, upper-cased. */
+export function normalizeBibId(bibId) {
+  return String(bibId).split(';')[0].trim().toUpperCase();
 }
 
 /** Trimmed and upper-cased; '' when there is no key. */
@@ -45,8 +45,8 @@ export function normalizeMass(mass) {
   return sign + milli.toString();
 }
 
-export function metaSource(sublibrary, code, doi, key) {
-  const parts = [sublibrary, `${code}-META`, normalizeDoi(doi)];
+export function metaSource(sublibrary, code, bibId, key) {
+  const parts = [sublibrary, `${code}-META`, normalizeBibId(bibId)];
   const k = normalizeKey(key);
   if (k) parts.push(k);
   return parts.join(SEPARATOR);
@@ -59,8 +59,8 @@ export function dataSource(sublibrary, code, element, mass, metaId, key) {
   return parts.join(SEPARATOR);
 }
 
-export function metaId(sublibrary, code, doi, key) {
-  return hash12(metaSource(sublibrary, code, doi, key));
+export function metaId(sublibrary, code, bibId, key) {
+  return hash12(metaSource(sublibrary, code, bibId, key));
 }
 
 export function dataId(sublibrary, code, element, mass, metaIdValue, key) {

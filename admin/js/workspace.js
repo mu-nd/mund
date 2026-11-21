@@ -4,7 +4,7 @@
 //
 // A draft holds the complete new text of a file (null: the file is deleted)
 // and the blob id of the saved version it was made from (`baseSha`, null for
-// a new file).  A file whose canonical name changed (new DOI, key
+// a new file).  A file whose canonical name changed (new source, key
 // or first author) is a pair of drafts: the deletion of the old path and the
 // new path, which names the old one as its `origin`; the pair is discarded
 // and deleted together.  Drafts are kept in `storage` (localStorage) so that
@@ -281,8 +281,8 @@ export class Workspace {
   }
 
   /**
-   * Add or replace the bibliography entry of a DOI (entries are kept sorted by
-   * DOI, compared case-insensitively) and stage the bibliography file.
+   * Add or replace the bibliography entry of a bibId (its id; entries are kept sorted by it,
+   * compared case-insensitively) and stage the bibliography file.
    */
   setReference(reference) {
     const path = `${MASTER_DIR}/bibliography.json`;
@@ -291,12 +291,13 @@ export class Workspace {
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.references)) {
       doc = { format: MASTER_FORMATS['bibliography.json'], references: [] };
     }
-    const key = String(reference.DOI).trim().toUpperCase();
-    doc.references = doc.references.filter((r) => String(r && r.DOI).trim().toUpperCase() !== key);
+    const keyOf = (r) => String((r && r.id) || '').trim().toUpperCase();
+    const key = keyOf(reference);
+    doc.references = doc.references.filter((r) => keyOf(r) !== key);
     doc.references.push(reference);
     doc.references.sort((a, b) => {
-      const x = String(a.DOI).toUpperCase();
-      const y = String(b.DOI).toUpperCase();
+      const x = keyOf(a);
+      const y = keyOf(b);
       return x < y ? -1 : x > y ? 1 : 0;
     });
     this.stage(path, this.db.canonicalText(doc));

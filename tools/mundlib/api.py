@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 from . import CODE_OF, jsonfmt
 from .cite import cite_text
 from .convert import Physics, combined_uncertainty
-from .ids import normalize_doi
+from .ids import normalize_bib_id
 
 FORMAT = "muND/api/LT/1"
 
@@ -97,7 +97,7 @@ def build_api(dist: Path, out: Path, config: Optional[dict] = None) -> int:
     z_of = {e: i + 1 for i, e in enumerate(elements)}
     physics = Physics(master["huff_factors"], master["constants"])
     metas = {m["id"]: m for m in lt["meta"]}
-    references = {normalize_doi(r["DOI"]): r for r in lt["bibliography"]}
+    references = {normalize_bib_id(r["id"]): r for r in lt["bibliography"]}
     head = {
         "format": FORMAT, "label": label, "version": manifest["version"], "kind": manifest["kind"],
         "commit": manifest.get("commit"), "date": manifest.get("date"),
@@ -127,12 +127,12 @@ def build_api(dist: Path, out: Path, config: Optional[dict] = None) -> int:
     def entries_file(rel: str, selection: dict, entries: List[dict]):
         ids = {e["metaId"] for e in entries}
         meta = [m for m in lt["meta"] if m["id"] in ids]
-        dois = {normalize_doi(e["bibId"]) for e in entries}
+        bib_ids = {normalize_bib_id(e["bibId"]) for e in entries}
         for m in meta:
-            dois.update(normalize_doi(d) for d in m.get("relatedBibIds") or [])
+            bib_ids.update(normalize_bib_id(b) for b in m.get("relatedBibIds") or [])
         doc = dict(head)
         doc["selection"] = dict(selection, entries=len(entries))
-        doc["bibliography"] = [r for r in lt["bibliography"] if normalize_doi(r["DOI"]) in dois]
+        doc["bibliography"] = [r for r in lt["bibliography"] if normalize_bib_id(r["id"]) in bib_ids]
         doc["meta"] = meta
         doc["data"] = [with_converted(e) for e in entries]
         emit(rel, doc)
@@ -177,7 +177,7 @@ def build_api(dist: Path, out: Path, config: Optional[dict] = None) -> int:
         entries = [e for e in data if e["metaId"] == m["id"]]
         entries_file("LT/meta/%s.json" % m["id"], {"metaId": m["id"]}, entries)
         sources.append({"metaId": m["id"], "datasetType": m["datasetType"], "bibId": m.get("bibId"),
-                        "reference": cite_text(references.get(normalize_doi(m.get("bibId") or "")), m.get("bibId") or ""),
+                        "reference": cite_text(references.get(normalize_bib_id(m.get("bibId") or "")), m.get("bibId") or ""),
                         "file": "meta/%s.json" % m["id"], "entries": len(entries)})
 
     index = {k: head[k] for k in ("label", "version", "kind", "commit", "date")}

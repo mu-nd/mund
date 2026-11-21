@@ -17,7 +17,7 @@ import * as ids from './ids.js';
 import * as jsonfmt from './jsonfmt.js';
 import * as schemaMod from './schema.js';
 import { sha256 } from './sha256.js';
-import { fileLabel, isPlaceholderDoi } from './cite.js';
+import { fileLabel, bibKind } from './cite.js';
 import { SUBLIBRARIES, DEFINED_SUBLIBRARIES, CODE_OF } from './vocabulary.js';
 import { nuclideTables } from './nuclides.js';
 
@@ -158,14 +158,14 @@ export class Database {
     this._references = null;
   }
 
-  /** Bibliography entries by normalised DOI. */
+  /** Bibliography entries by their normalised id (the bibId). */
   references() {
     if (!this._references) {
       const out = new Map();
       const refs = this.masterObj('bibliography.json').references;
       for (const ref of Array.isArray(refs) ? refs : []) {
-        if (isObject(ref) && typeof ref.DOI === 'string') {
-          const key = ids.normalizeDoi(ref.DOI);
+        if (isObject(ref) && typeof ref.id === 'string' && ref.id) {
+          const key = ids.normalizeBibId(ref.id);
           if (!out.has(key)) out.set(key, ref);
         }
       }
@@ -174,8 +174,8 @@ export class Database {
     return this._references;
   }
 
-  reference(doi) {
-    return typeof doi === 'string' ? this.references().get(ids.normalizeDoi(doi)) || null : null;
+  reference(bibId) {
+    return typeof bibId === 'string' ? this.references().get(ids.normalizeBibId(bibId)) || null : null;
   }
 
   /** Add or replace any file under data/: a master table, a file of a sub-library, or neither. */
@@ -286,7 +286,7 @@ export class Database {
       issues.push(...this.checkUnique(f, 'facilities', 'abbr', 'E_DUPLICATE_FACILITY', (v) => v));
     }
     if (name === 'bibliography.json') {
-      issues.push(...this.checkUnique(f, 'references', 'DOI', 'E_DUPLICATE_REFERENCE', ids.normalizeDoi));
+      issues.push(...this.checkUnique(f, 'references', 'id', 'E_DUPLICATE_REFERENCE', ids.normalizeBibId));
     }
     if (name === 'constants.json') {
       issues.push(...this.checkUnique(f, 'constants', 'name', 'E_DUPLICATE_CONSTANT', (v) => v));
@@ -416,7 +416,8 @@ export class Database {
     if (typeof meta.facility === 'string' && !tables.facilityAbbrs.has(meta.facility)) {
       issues.push(issue('error', 'E_FACILITY', path, '/meta/facility', `'${meta.facility}' is not listed in ${MASTER_DIR}/facilities.json`));
     }
-    if (typeof meta.bibId === 'string' && !isPlaceholderDoi(meta.bibId) && !this.reference(meta.bibId)) {
+    // a DOI or an NSR keynumber has its bibliographic data in the bibliography; a muND key may have them
+    if (['DOI', 'NSR'].includes(bibKind(meta.bibId)) && !this.reference(meta.bibId)) {
       issues.push(issue('warning', 'W_NO_REFERENCE', path, '/meta/bibId',
         `no bibliographic information for ${meta.bibId} in ${MASTER_DIR}/bibliography.json`));
     }

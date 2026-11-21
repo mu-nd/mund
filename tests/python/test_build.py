@@ -46,13 +46,14 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(len(agg["data"]), 40)
         metas = {m["id"] for m in agg["meta"]}
         self.assertTrue(all(e["metaId"] in metas for e in agg["data"]))
-        self.assertEqual([b["DOI"] for b in agg["bibliography"]], ["10.1103/PhysRevC.111.034614", "10.1103/vl7z-rzp8"])
-        entry = next(e for e in agg["data"] if e["datasetId"] == "e2551c5951a7")
+        self.assertEqual([b["id"] for b in agg["bibliography"]], ["DOI:10.1103/PhysRevC.111.034614", "DOI:10.1103/vl7z-rzp8"])
+        entry = next(e for e in agg["data"] if e["datasetId"] == "e489422fdeb4")
         self.assertEqual(jsonfmt.plain(entry), {
-            "datasetId": "e2551c5951a7", "datasetType": "experiment", "metaId": "dcb3b051457e",
-            "bibId": "10.1103/vl7z-rzp8", "nuclide": {"element": "Si", "mass": 28, "isomer": 0},
+            "datasetId": "e489422fdeb4", "datasetType": "experiment", "metaId": "4d2ed5c83736",
+            "bibId": "DOI:10.1103/vl7z-rzp8", "nuclide": {"element": "Si", "mass": 28, "isomer": 0},
             "observable": {"kind": "lifetime", "lifetime": {
-                "value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}}})
+                "value": 743.9, "unit": "ns", "uncertainties": [{"source": "total", "value": 5.0}]}},
+            "legacyIds": ["e2551c5951a7"]})
         si = [e for e in agg["data"] if e["nuclide"]["element"] == "Si" and e["datasetType"] == "curated"]
         self.assertEqual(jsonfmt.lexeme(si[1]["observable"]["capture_rate"]["uncertainties"][0]["value"]),
                          "0.0090", "digits are kept")
@@ -65,7 +66,7 @@ class BuildTests(unittest.TestCase):
         rows = list(csv.DictReader(io.StringIO((self.out / "csv/LT.csv").read_text(encoding="utf-8"))))
         self.assertEqual(len(rows), 40)
         self.assertEqual(list(rows[0]), build.CSV_COLUMNS)
-        r = next(r for r in rows if r["datasetId"] == "e2551c5951a7")
+        r = next(r for r in rows if r["datasetId"] == "e489422fdeb4")
         self.assertEqual((r["datasetType"], r["element"], r["z"], r["mass"], r["observable"], r["value"],
                           r["uncertainty"], r["unit"]),
                          ("experiment", "Si", "14", "28", "lifetime", "743.9", "5.0", "ns"))
@@ -79,7 +80,7 @@ class BuildTests(unittest.TestCase):
         db = Database.load(self.repo)
         physics = Physics(db.master_obj("huff_factors.json"), db.master_obj("constants.json"))
         agg = {"meta": [{"id": "m"}], "data": [jsonfmt.loads(
-            '{"datasetId": "d", "datasetType": "experiment", "metaId": "m", "bibId": "10.1103/vl7z-rzp8",'
+            '{"datasetId": "d", "datasetType": "experiment", "metaId": "m", "bibId": "DOI:10.1103/vl7z-rzp8",'
             ' "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": {"kind": "lifetime",'
             ' "lifetime": {"value": 751.4, "unit": "ns", "uncertainties": [{"source": "statistical", "value": 0.8},'
             ' {"source": "systematic", "value": 0.7}]}}}')]}
@@ -135,13 +136,13 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(si28["format"], "muND/api/LT/1")
         self.assertEqual(si28["selection"], {"nuclide": "Si-28", "element": "Si", "z": 14, "mass": 28, "isomer": 0,
                                              "entries": len(si28["data"])})
-        entry = next(e for e in si28["data"] if e["datasetId"] == "e2551c5951a7")
+        entry = next(e for e in si28["data"] if e["datasetId"] == "e489422fdeb4")
         self.assertEqual((entry["converted"]["lifetime_ns"], entry["converted"]["huff_source"]), (743.9, "nuclide"))
         self.assertAlmostEqual(entry["converted"]["capture_rate_us-1"], 1 / 0.7439 - 0.9924 / 2.1969811, places=5)
         self.assertEqual({m["id"] for m in si28["meta"]}, {e["metaId"] for e in si28["data"]})
-        one = json.loads((site / "api/latest/LT/entry/e2551c5951a7.json").read_text(encoding="utf-8"))
-        self.assertEqual(one["data"][0]["datasetId"], "e2551c5951a7")
-        self.assertIn("10.48550/arXiv.2501.05897", [b["DOI"] for b in one["bibliography"]] + one["meta"][0]["relatedBibIds"])
+        one = json.loads((site / "api/latest/LT/entry/e489422fdeb4.json").read_text(encoding="utf-8"))
+        self.assertEqual(one["data"][0]["datasetId"], "e489422fdeb4")
+        self.assertIn("DOI:10.48550/arXiv.2501.05897", [b["id"] for b in one["bibliography"]] + one["meta"][0]["relatedBibIds"])
         index = json.loads((site / "api/latest/LT/index.json").read_text(encoding="utf-8"))
         si = next(e for e in index["elements"] if e["element"] == "Si")
         self.assertEqual(si["file"], "Si.json")
@@ -224,7 +225,7 @@ class ReleaseBuildTests(unittest.TestCase):
         frozen = self.hashes(self.repo / "releases" / "v1")
 
         # later: a correction, a new version and a change of the conversion code
-        path = self.repo / "data/LT/EXP/Mizuno2025_dcb3b051457e.json"
+        path = self.repo / "data/LT/EXP/Mizuno2025_4d2ed5c83736.json"
         text = path.read_text(encoding="utf-8")
         self.assertIn('"value": 743.9, "unit": "ns"', text)
         path.write_text(text.replace('"value": 743.9, "unit": "ns"', '"value": 744.9, "unit": "ns"'), encoding="utf-8")
@@ -242,7 +243,7 @@ class ReleaseBuildTests(unittest.TestCase):
 
         def si28(label):
             agg = jsonfmt.loads((site / "data" / label / "LT.json").read_text(encoding="utf-8"))
-            entry = next(e for e in agg["data"] if e["datasetId"] == "e2551c5951a7")
+            entry = next(e for e in agg["data"] if e["datasetId"] == "e489422fdeb4")
             return jsonfmt.lexeme(entry["observable"]["lifetime"]["value"])
 
         self.assertEqual(si28("v1"), "743.9")

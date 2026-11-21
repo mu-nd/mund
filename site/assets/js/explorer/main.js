@@ -1,5 +1,5 @@
-// Entry point of every page: page chrome (navigation, version selector,
-// footer) and the page itself, chosen by the address (route.js).
+// Entry point of every page: page chrome (the menu and the icons of the
+// header, the version choice) and the page itself, chosen by the address (route.js).
 //
 // Pages that show data name the version in the address (?v=…): without it the
 // default version (the newest release) is shown and v is added (not on Home,
@@ -10,7 +10,8 @@
 // db/?z=14 to the explorer, #about #news #team (also #/about …) to the
 // sections of Home, #/converter and #/downloads to their pages.
 
-import { h, replace, externalLink } from '../core/dom.js';
+import { h, replace } from '../core/dom.js';
+import { icon } from '../core/icons.js';
 import { loadConfig } from '../core/site.js';
 import { loadVersions, loadVersion } from './store.js';
 import { query, urlWith, versionUrl, currentPage, pageUrl, pageLink } from './route.js';
@@ -41,7 +42,7 @@ const pageOf = (key) => PAGES[key] || (key.startsWith('docs/') ? { document: tru
 
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
-const footer = document.getElementById('footer');
+const tools = document.getElementById('tools');
 
 /** Addresses of the former layouts: true when the browser is sent on. */
 function redirectFormer(key) {
@@ -66,25 +67,36 @@ function optionText(v, newestRelease) {
 /**
  * The colours of the project site are shown unless the reader chooses the dark
  * ones here; the choice is kept in this browser (index.html applies it on load).
+ * The icon and the name say what a click does: a moon (dark colours), a sun (light colours).
  */
 function themeSwitch() {
   const dark = () => document.documentElement.dataset.theme === 'dark';
-  const button = h('button', { class: 'theme-switch', type: 'button' });
-  const label = () => replace(button, dark() ? 'Light colours' : 'Dark colours');
+  const button = h('button', { class: 'icon-button', type: 'button' });
+  const show = () => {
+    const name = dark() ? 'Light colours' : 'Dark colours';
+    button.title = name;
+    button.setAttribute('aria-label', name);
+    replace(button, icon(dark() ? 'sun' : 'moon'));
+  };
   button.addEventListener('click', () => {
     if (dark()) delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = 'dark';
     try { localStorage.setItem('mund-theme', dark() ? 'dark' : 'light'); } catch { /* not kept: the page still works */ }
-    label();
+    show();
   });
-  label();
+  show();
   return button;
 }
 
-/** The footer: the source on GitHub and the switch of the colours (the menu and the version are above). */
-function renderFooter(config) {
-  replace(footer, externalLink(`https://github.com/${config.repository}`, 'Source and history on GitHub'), themeSwitch());
-}
+/**
+ * The icons on the right of the menu: the source on GitHub and the switch of the
+ * colours.  The link keeps its place, hidden, until the configuration names the
+ * repository (`source(config)`), so that the menu does not move.
+ */
+const SOURCE = 'Source and history on GitHub';
+const sourceLink = h('a', { class: 'icon-button', target: '_blank', rel: 'noopener', title: SOURCE, 'aria-label': SOURCE, style: { visibility: 'hidden' } },
+  icon('github'));
+const source = (config) => { sourceLink.href = `https://github.com/${config.repository}`; sourceLink.style.visibility = ''; };
 
 /** The version of the data a page shows, at the top of the page (on Home above the periodic table). */
 function versionBar(versions, label, entry) {
@@ -119,6 +131,7 @@ async function start() {
   replace(nav, NAV.map(([k, label]) => h('a', {
     href: k === 'docs' || k === 'api' ? pageUrl(k) : pageLink(k), 'aria-current': k === page.nav ? 'page' : null,
   }, label)));
+  replace(tools, sourceLink, themeSwitch());
 
   let config;
   let versions;
@@ -130,7 +143,7 @@ async function start() {
   }
   const asked = query().get('v');
   const { label, entry, error } = resolveVersion(versions, asked);
-  renderFooter(config);
+  source(config);
   if (page.document) return;
 
   const view = h('div', { class: 'view' });

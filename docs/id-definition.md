@@ -12,7 +12,7 @@ rule: which fields identify their data entries is not decided.
 
 | | identifies | defined by |
 |---|---|---|
-| **MetaID** (`meta.id` in the files) | a metadata record: one publication (optionally one of several set-ups in it) | sub-library, dataset type, DOI (`bibId`), optional key |
+| **MetaID** (`meta.id` in the files) | a metadata record: one publication (optionally one of several set-ups in it) | sub-library, dataset type, source (`bibId`), optional key |
 | **DataID** (`datasetId` in the files) | one data entry | sub-library, dataset type, element, mass number, MetaID, optional key |
 
 Values, uncertainties, units and all descriptive metadata (facility, method,
@@ -26,7 +26,7 @@ can be followed in git.
 MetaID = first 12 hexadecimal digits of SHA-256( UTF-8( meta_source ) )
 DataID = first 12 hexadecimal digits of SHA-256( UTF-8( data_source ) )
 
-meta_source = "LT|{DataSet}-META|{doi_norm}[|{key_norm}]"
+meta_source = "LT|{DataSet}-META|{bib_norm}[|{key_norm}]"
 data_source = "LT|{DataSet}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
 ```
 
@@ -41,30 +41,30 @@ data_source = "LT|{DataSet}|{element_norm}|{mass_norm}|{MetaID}[|{key_norm}]"
 
 | part | rule | example |
 |---|---|---|
-| `doi_norm` | if several DOIs are given separated by `;`, take the first; remove leading and trailing white space; convert to upper case | `10.1103/vl7z-rzp8; 10.48550/arXiv.2501.05897` → `10.1103/VL7Z-RZP8` |
+| `bib_norm` | the `bibId` (`DOI:`, `NSR:` or `muND:` and a name, §4): if several are given separated by `;`, take the first; remove leading and trailing white space; convert to upper case | `DOI:10.1103/vl7z-rzp8; DOI:10.48550/arXiv.2501.05897` → `DOI:10.1103/VL7Z-RZP8`, `muND:unpublished` → `MUND:UNPUBLISHED` |
 | `key_norm` | remove leading and trailing white space; convert to upper case; an empty key counts as "no key" | ` plate ` → `PLATE` |
 | `element_norm` | element symbol: first letter upper case, second letter (if any) lower case, no white space | ` si ` → `Si` |
 | `mass_norm` | decimal string of *mass number × 1000*, rounded to an integer, no sign, no decimal point. A target of natural isotopic abundance has mass number 0 | `27` → `27000`, `0` → `0`, `106.5` → `106500` |
 
-Upper-casing means that DOIs and keys are compared case-insensitively:
-`10.1103/PhysRevC.35.2212` and `10.1103/physrevc.35.2212` are the same
+Upper-casing means that bibIds and keys are compared case-insensitively:
+`DOI:10.1103/PhysRevC.35.2212` and `DOI:10.1103/physrevc.35.2212` are the same
 reference.
 
 ### Worked example
 
 ```
-meta_source = "LT|EXP-META|10.1103/VL7Z-RZP8"
-MetaID      = dcb3b051457e
+meta_source = "LT|EXP-META|DOI:10.1103/VL7Z-RZP8"
+MetaID      = 4d2ed5c83736
 
-data_source = "LT|EXP|Al|27000|dcb3b051457e|PLATE"
-DataID      = 343adc036597
+data_source = "LT|EXP|Al|27000|4d2ed5c83736|PLATE"
+DataID      = dd91adba8444
 ```
 
 You can reproduce it with any SHA-256 tool, for example
 
 ```sh
-printf '%s' 'LT|EXP-META|10.1103/VL7Z-RZP8' | shasum -a 256 | cut -c1-12
-python3 tools/mund.py id LT EXP 10.1103/vl7z-rzp8 --element Al --mass 27 --key plate
+printf '%s' 'LT|EXP-META|DOI:10.1103/VL7Z-RZP8' | shasum -a 256 | cut -c1-12
+python3 tools/mund.py id LT EXP DOI:10.1103/vl7z-rzp8 --element Al --mass 27 --key plate
 ```
 
 ## 3. Keys
@@ -78,19 +78,24 @@ for a key.
 
 Keys are part of the identifier: choose them once and keep them.
 
-## 4. Sources without a DOI
+## 4. Sources (bibId)
 
-A source without a DOI (old report, thesis, unpublished compilation) gets a
-*placeholder* of the form `10.1000/mund.<name>`, for example
-`10.1000/mund.Suzuki1975thesis`. `10.1000/unpublished` is in use for the
-curation whose paper is not written yet. Placeholders are never resolved through doi.org;
-their bibliography entry is written by hand. They enter the identifier
-exactly like a real DOI.
+A source is named by a prefix and a name:
+
+| form | for | example |
+|---|---|---|
+| `DOI:<DOI>` | a source with a DOI | `DOI:10.1103/vl7z-rzp8` |
+| `NSR:<keynumber>` | a source without a DOI (old report, thesis …), by its keynumber in [Nuclear Science References](https://www.nndc.bnl.gov/nsr/) | `NSR:1987SU06` |
+| `muND:<name>` | a source that NSR does not list either | `muND:Suzuki1975thesis`; `muND:unpublished` for the curation whose paper is not written yet |
+
+No made-up DOI is used: a DOI is only ever one that its registration agency
+assigned. The three forms enter the identifier in the same way, prefix
+included.
 
 ## 5. What happens when the defining information changes
 
 Values, uncertainties and comments are not part of an identifier: correcting
-them keeps the identifier. If the element, mass number, key, DOI or dataset
+them keeps the identifier. If the element, mass number, key, source (`bibId`) or dataset
 type of an entry changes, its identifier changes too, and whoever makes the
 change says which of two things it is:
 

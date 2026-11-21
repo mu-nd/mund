@@ -4,7 +4,7 @@
 import { entryHash } from '../core/database.js';
 import { Physics, combinedUncertainty } from '../core/convert.js';
 import { nuclideTables, effectiveMass } from '../core/nuclides.js';
-import { normalizeDoi } from '../core/ids.js';
+import { normalizeBibId } from '../core/ids.js';
 import { CODE_OF, DEFINED_SUBLIBRARIES } from '../core/vocabulary.js';
 
 // Formats of the built files these pages can read.  Stable versions keep
@@ -61,7 +61,7 @@ export function buildVersion({ label, manifest, master, lt }) {
   };
   const physics = new Physics(master.huff_factors, master.constants);
   const metas = new Map(lt.meta.map((m) => [m.id, m]));
-  const references = new Map(lt.bibliography.map((r) => [normalizeDoi(r.DOI), r]));
+  const references = new Map(lt.bibliography.map((r) => [normalizeBibId(r.id), r]));
 
   const rows = lt.data.map((entry) => {
     const { nuclide, observable } = entry;
@@ -71,7 +71,7 @@ export function buildVersion({ label, manifest, master, lt }) {
     return {
       entry,
       meta: metas.get(entry.metaId),
-      reference: references.get(normalizeDoi(entry.bibId)) || null,
+      reference: references.get(normalizeBibId(entry.bibId)) || null,
       code: CODE_OF[entry.datasetType],
       z,
       a: effectiveMass(z, nuclide.mass, tables.monoisotopic),

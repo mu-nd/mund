@@ -69,7 +69,7 @@ export function register(h, modules, env) {
     };
     const lt = {
       format: 'muND/dist/LT/1', sublibrary: 'LT', version,
-      bibliography: parsed('data/master/bibliography.json').references.filter((r) => cited.has(r.DOI.toUpperCase())),
+      bibliography: parsed('data/master/bibliography.json').references.filter((r) => cited.has(r.id.toUpperCase())),
       meta, data,
     };
     return model.buildVersion({ label, manifest, master, lt });
@@ -196,8 +196,8 @@ export function register(h, modules, env) {
       'the manifest without its list of files');
     t.deepEqual(doc.source, { path: 'data/v1/LT.json', bytes: 123, sha256: SHA });
     t.deepEqual(doc.data.map((e) => e.datasetId), idsOf(shown), 'the entries shown, as published');
-    t.deepEqual(doc.meta.map((m) => m.id), ['591344c27b81', 'dcb3b051457e'], 'their metadata records');
-    t.deepEqual(doc.bibliography.map((b) => b.DOI), ['10.1103/vl7z-rzp8'], 'the references they cite that have an entry');
+    t.deepEqual(doc.meta.map((m) => m.id), ['15fd4fea826c', '4d2ed5c83736'], 'their metadata records');
+    t.deepEqual(doc.bibliography.map((b) => b.id), ['DOI:10.1103/vl7z-rzp8'], 'the references they cite that have an entry');
 
     const text = jsonfmt.stringify(doc);
     t.ok(text.includes('"uncertainties": [{"source": "total", "value": 0.0090}]'), 'numbers keep their written digits');
@@ -206,7 +206,7 @@ export function register(h, modules, env) {
     t.equal(back.manifest.version, '1.0.0');
 
     const evaluated = selection.selectionJson({ version, rows: selection.selectRows(version.rows, { ds: ['EVAL'] }), filters });
-    t.deepEqual(evaluated.bibliography.map((b) => b.DOI), ['10.1103/PhysRevC.111.034614']);
+    t.deepEqual(evaluated.bibliography.map((b) => b.id), ['DOI:10.1103/PhysRevC.111.034614']);
     t.equal(evaluated.citation, null);
 
     t.equal(selection.selectionName(version.manifest, filters), 'mund_LT_1.0.0_Si_EXP-CUR');
@@ -249,12 +249,12 @@ export function register(h, modules, env) {
   h.test('explorer: citations and permalinks name the version', async (t) => {
     // the default version is shown: its label is still written out
     const shown = versioning.resolveVersion(VERSIONS, null);
-    const link = versioning.permalink(EXPLORER, shown.label, { z: 14, a: '', id: 'e2551c5951a7', q: null });
-    t.equal(link, 'https://ribf.riken.jp/muon/explorer/?v=v1&z=14&id=e2551c5951a7');
+    const link = versioning.permalink(EXPLORER, shown.label, { z: 14, a: '', id: 'e489422fdeb4', q: null });
+    t.equal(link, 'https://ribf.riken.jp/muon/explorer/?v=v1&z=14&id=e489422fdeb4');
     const data = { title: 'muND: Muon Nuclear Data', author: 'muND Project Team' };
     const release = (await published()).manifest;
     t.equal(citation.citationTexts({ data }, { ...release, label: 'v1' }, link).database,
-      'muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1&z=14&id=e2551c5951a7.',
+      'muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1&z=14&id=e489422fdeb4.',
       'an entry: the address of the entry');
     t.equal(versioning.permalink(EXPLORER, 'v1', { a: '0' }), 'https://ribf.riken.jp/muon/explorer/?v=v1&a=0', 'mass number 0 is kept');
     t.equal(versioning.dataLicence({ dataLicence: null }), 'to be decided');
@@ -324,14 +324,14 @@ export function register(h, modules, env) {
 
   h.test('explorer: derived values whose original changed', async (t) => {
     const version = await published();
-    const curated = version.byId.get('6730248ef6ac');
-    t.deepEqual(curated.originals.map((o) => [o.id, o.changed, o.row.entry.datasetId]), [['e2551c5951a7', false, 'e2551c5951a7']]);
+    const curated = version.byId.get('0430524aa904');
+    t.deepEqual(curated.originals.map((o) => [o.id, o.changed, o.row.entry.datasetId]), [['e489422fdeb4', false, 'e489422fdeb4']]);
     t.equal(version.byId.get('ef8409832d42'), curated, 'a former identifier leads to the entry');
-    t.deepEqual(idsOf(version.usedBy.get('e2551c5951a7')), ['6730248ef6ac']);
+    t.deepEqual(idsOf(version.usedBy.get('e489422fdeb4')), ['0430524aa904']);
     const edited = await published({
-      edit: (data) => jsonfmt.setNumber(data.find((e) => e.datasetId === 'e2551c5951a7').observable.lifetime, 'value', '744.9'),
+      edit: (data) => jsonfmt.setNumber(data.find((e) => e.datasetId === 'e489422fdeb4').observable.lifetime, 'value', '744.9'),
     });
-    t.deepEqual(edited.byId.get('6730248ef6ac').originals.map((o) => o.changed), [true], 'a corrected original is flagged');
-    t.ok(edited.byId.get('18d9d393dfc6').originals.every((o) => !o.changed), 'the others are not');
+    t.deepEqual(edited.byId.get('0430524aa904').originals.map((o) => o.changed), [true], 'a corrected original is flagged');
+    t.ok(edited.byId.get('b15200d13c23').originals.every((o) => !o.changed), 'the others are not');
   });
 }

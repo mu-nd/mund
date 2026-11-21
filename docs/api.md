@@ -23,8 +23,8 @@ https://ribf.riken.jp/muon/api/<version>/...
 | `api/<version>/LT/Si-28.json` | all entries of a nuclide |
 | `api/<version>/LT/Si-nat.json` | all entries of targets of natural isotopic abundance |
 | `api/<version>/LT/evaluated.json` | all entries of one kind of data: `experiment`, `theory`, `curated` or `evaluated` (only the kinds that have data) |
-| `api/<version>/LT/entry/e2551c5951a7.json` | one data entry, by its DataID |
-| `api/<version>/LT/meta/dcb3b051457e.json` | one source (metadata record, MetaID) and all its entries |
+| `api/<version>/LT/entry/e489422fdeb4.json` | one data entry, by its DataID |
+| `api/<version>/LT/meta/4d2ed5c83736.json` | one source (metadata record, MetaID) and all its entries |
 
 Element symbols are written as in the periodic table (`Si`, not `si` or `SI`).
 A file that does not exist is answered with HTTP status 404.

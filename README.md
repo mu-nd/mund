@@ -101,6 +101,7 @@ node tests/js/run-node.mjs            # tests of the browser code (Node 20+); th
 ```
 data/      the database (JSON) and its master tables — approved data only
 releases/  the frozen major releases, exactly as published (created when a major version is released)
+templates/ proposed shapes of XR, ES and BR files (JSON Schema, not decided), for designing their pages
 schema/    JSON Schema of the files
 site/      web site (static files, no build step for the scripts)
 admin/     data entry tool (served by `tools/mund.py admin` on your computer)

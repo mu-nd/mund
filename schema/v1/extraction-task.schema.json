@@ -22,16 +22,16 @@
     "taskId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
     "text": {"type": "string", "minLength": 1},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "doi": {
+    "bibId": {
       "type": "string",
-      "pattern": "^10\\.[0-9]{4,9}/[^\\s;]+$",
-      "description": "A DOI without the https://doi.org/ prefix (placeholders 10.1000/mund.<name> as in the data files)."
+      "pattern": "^(DOI:10\\.[0-9]{4,9}/[^\\s;]+|NSR:[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}|muND:[A-Za-z0-9][A-Za-z0-9._-]*)$",
+      "description": "A source as in the data files: DOI:<DOI>, NSR:<keynumber> or muND:<name>."
     },
     "source": {
       "type": "object",
       "description": "The source that is read. Only its identity is recorded: the PDF itself and text copied from it are never stored in the repository.",
       "properties": {
-        "bibId": {"$ref": "#/$defs/doi", "description": "Main reference of the source (becomes meta.bibId of the published data)."},
+        "bibId": {"$ref": "#/$defs/bibId", "description": "Main reference of the source (becomes meta.bibId of the published data)."},
         "version": {"$ref": "#/$defs/text", "description": "Which version was read, as free text: journal version, arXiv:2501.05897v2, accepted manuscript ..."},
         "sha256": {"$ref": "#/$defs/sha256", "description": "SHA-256 of the PDF file that was read."},
         "size": {"type": "integer", "minimum": 1, "description": "Size of that PDF file in bytes."},

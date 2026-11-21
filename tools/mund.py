@@ -74,8 +74,8 @@ def cmd_fix(args) -> int:
 
 
 def cmd_id(args) -> int:
-    mid = ids.meta_id(args.sublibrary, args.code, args.doi, args.meta_key)
-    print("MetaID  %s   <- %s" % (mid, ids.meta_source(args.sublibrary, args.code, args.doi, args.meta_key)))
+    mid = ids.meta_id(args.sublibrary, args.code, args.bib_id, args.meta_key)
+    print("MetaID  %s   <- %s" % (mid, ids.meta_source(args.sublibrary, args.code, args.bib_id, args.meta_key)))
     if args.element:
         did = ids.data_id(args.sublibrary, args.code, args.element, args.mass, mid, args.key)
         print("DataID  %s   <- %s" % (did, ids.data_source(args.sublibrary, args.code, args.element,
@@ -176,7 +176,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("id", help="compute a MetaID (and a DataID)")
     p.add_argument("sublibrary", choices=DEFINED_SUBLIBRARIES)
     p.add_argument("code", choices=CODES)
-    p.add_argument("doi")
+    p.add_argument("bib_id", metavar="bibId", help="DOI:<DOI>, NSR:<keynumber> or muND:<name>")
     p.add_argument("--meta-key", default=None)
     p.add_argument("--element")
     p.add_argument("--mass", default="0")

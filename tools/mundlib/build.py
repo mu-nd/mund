@@ -119,7 +119,7 @@ def aggregate_lt(db: Database, version: str) -> dict:
         metas.append(meta)
         ref = db.reference(f.meta.get("bibId"))
         if ref is not None:
-            bib[ref["DOI"]] = ref
+            bib[ref["id"]] = ref
         for entry in f.data:
             out = {"datasetId": entry.get("datasetId"), "datasetType": obj.get("datasetType"),
                    "metaId": f.meta.get("id"), "bibId": f.meta.get("bibId")}

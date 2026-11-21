@@ -5,7 +5,7 @@
 import { h, replace, nuclideNode, externalLink } from '../core/dom.js';
 import * as jsonfmt from '../core/jsonfmt.js';
 import { siteUrl } from '../core/site.js';
-import { citeLabel, citeText, authorList, doiUrl, isPlaceholderDoi, referenceTitle } from '../core/cite.js';
+import { citeLabel, citeText, authorList, sourceUrl, referenceTitle } from '../core/cite.js';
 import { formatQuantity, formatDerived } from '../core/format.js';
 import { QUANTITIES, UNIT_LABELS } from '../core/convert.js';
 import { CODE_TITLES } from '../core/vocabulary.js';
@@ -47,7 +47,10 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
         ` · ${citeLabel(found.reference, found.entry.bibId)}`] : ' (not in this version)',
       changed ? [' ', h('span', { class: 'changed' }, 'changed after this value was derived from it; to be checked again')] : null);
   };
-  const doiLink = (doi) => (doiUrl(doi) ? externalLink(doiUrl(doi), doi) : doi);
+  const bibLink = (bibId, reference = null) => {
+    const url = sourceUrl(bibId, reference);
+    return url ? externalLink(url, bibId) : bibId;
+  };
   const usedBy = version.usedBy.get(entry.datasetId) || [];
   const changedOriginals = row.originals.filter((o) => o.changed).length;
   const facility = tables.facilities.get(meta.facility);
@@ -95,11 +98,11 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
         kv([['Method', meta.method], ['Reference database', meta.referenceDatabase], ['Comment', meta.comment]])] : null),
       h('h3', null, 'Reference'),
       kv([
-        ['Citation', reference ? citeText(reference, entry.bibId) : (isPlaceholderDoi(entry.bibId) ? 'Not published yet' : '')],
+        ['Citation', reference ? citeText(reference, entry.bibId) : ''],
         ['Title', referenceTitle(reference)],
         ['Authors', authorList(reference)],
-        ['DOI', doiUrl(entry.bibId) ? doiLink(entry.bibId) : `${entry.bibId} (placeholder: no public DOI)`],
-        meta.relatedBibIds ? ['Related', h('span', null, meta.relatedBibIds.map((d, i) => [i ? ', ' : '', doiLink(d)]))] : null,
+        ['Source', bibLink(entry.bibId, reference)],
+        meta.relatedBibIds ? ['Related', h('span', null, meta.relatedBibIds.map((d, i) => [i ? ', ' : '', bibLink(d)]))] : null,
       ]),
       extra ? extra(row) : null,
       h('h3', null, 'Identifiers'),

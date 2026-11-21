@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "muND XR file (template, not decided)",
+  "description": "A proposal for a file of the XR sub-library (muonic X-ray energies and intensities), made so that its pages can be designed before its format is decided. The envelope and the metadata are those of LT (schema/v1/lt.schema.json); only the entries differ. One entry is one transition of one nuclide.",
+  "type": "object",
+  "properties": {
+    "format": {"const": "muND/XR/draft"},
+    "sublibrary": {"const": "XR"},
+    "datasetType": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/properties/datasetType"},
+    "meta": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/meta"},
+    "data": {"type": "array", "items": {"$ref": "#/$defs/entry"}}
+  },
+  "required": ["format", "sublibrary", "datasetType", "meta", "data"],
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "datasetId": {
+          "$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/id",
+          "description": "DataID as for LT, with the transition in place of the key: XR|{DataSet}|{element}|{mass x 1000}|{MetaID}|{TRANSITION}."
+        },
+        "nuclide": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/nuclide"},
+        "observable": {
+          "type": "object",
+          "properties": {"kind": {"const": "xray"}, "xray": {"$ref": "#/$defs/xray"}},
+          "required": ["kind", "xray"],
+          "additionalProperties": false
+        },
+        "comment": {"$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/text"}
+      },
+      "required": ["datasetId", "nuclide", "observable"],
+      "additionalProperties": false
+    },
+    "xray": {
+      "type": "object",
+      "properties": {
+        "transition": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*[spdfghi]([1-9][0-9]*/2)?-[1-9][0-9]*[spdfghi]([1-9][0-9]*/2)?$",
+          "description": "Upper and lower state, e.g. 2p3/2-1s1/2, or 3d-2p when the fine structure is not resolved."
+        },
+        "energy": {
+          "$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/quantity",
+          "properties": {"unit": {"const": "keV"}}
+        },
+        "intensity": {
+          "$ref": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json#/$defs/quantity",
+          "properties": {"unit": {"const": "per muon"}},
+          "description": "Optional."
+        }
+      },
+      "required": ["transition", "energy"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -10,7 +10,7 @@ from pathlib import Path
 from helpers import ROOT, make_repository
 from mundlib import admin
 
-MIZUNO = "data/LT/EXP/Mizuno2025_dcb3b051457e.json"
+MIZUNO = "data/LT/EXP/Mizuno2025_4d2ed5c83736.json"
 
 
 def git(repo: Path, *args: str) -> str:
@@ -133,13 +133,13 @@ class LocalRepositoryTests(unittest.TestCase):
 
     def test_changes_to_different_files_are_combined(self):
         bob = admin.LocalRepository(self.bob)
-        bob.save("Bob adds a comment", [self.change("data/LT/CUR/unpublished_591344c27b81.json",
+        bob.save("Bob adds a comment", [self.change("data/LT/CUR/unpublished_15fd4fea826c.json",
                                                     '"Weighted average of two data"', '"Weighted average of two data sets"',
                                                     root=self.bob)])
         result = self.repo.save("Alice's correction", [self.change()])
         self.assertTrue(result["sent"])
         self.assertIn('"value": 744.9', self.github_text())
-        self.assertIn("two data sets", self.github_text("data/LT/CUR/unpublished_591344c27b81.json"))
+        self.assertIn("two data sets", self.github_text("data/LT/CUR/unpublished_15fd4fea826c.json"))
 
     def test_saved_while_offline_is_sent_later(self):
         git(self.alice, "remote", "set-url", "origin", str(Path(self.tmp.name) / "missing.git"))
@@ -161,7 +161,7 @@ class LocalRepositoryTests(unittest.TestCase):
     def test_rename_and_refused_deletion(self):
         old = self.alice / MIZUNO
         sha = admin.blob_sha(old.read_bytes())
-        renamed = "data/LT/EXP/MizunoEtAl2025_dcb3b051457e.json"
+        renamed = "data/LT/EXP/MizunoEtAl2025_4d2ed5c83736.json"
         result = self.repo.save("Rename", [{"path": MIZUNO, "content": None, "baseSha": sha},
                                            {"path": renamed, "content": old.read_text(encoding="utf-8"), "baseSha": None}])
         self.assertTrue(result["sent"])

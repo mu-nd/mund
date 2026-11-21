@@ -25,7 +25,7 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(sorted(f.code for f in db.files), ["CUR", "EVAL", "EXP"])
         for f in db.files:
             self.assertEqual(f.path, file_path(f.obj, db.reference(f.meta["bibId"])))
-        self.assertEqual(db.reference("10.1103/VL7Z-RZP8")["author"][0]["family"], "Mizuno",
+        self.assertEqual(db.reference("DOI:10.1103/VL7Z-RZP8")["author"][0]["family"], "Mizuno",
                          "DOIs are compared case-insensitively")
 
 
@@ -55,19 +55,19 @@ class SharedVectorTests(unittest.TestCase):
 class FileTests(unittest.TestCase):
     def test_assign_ids(self):
         obj = {"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "experiment",
-               "meta": {"bibId": "10.1103/vl7z-rzp8"},
+               "meta": {"bibId": "DOI:10.1103/vl7z-rzp8"},
                "data": [{"nuclide": {"element": "Al", "mass": 27, "isomer": 0}, "key": "plate"},
                         {"nuclide": {"isomer": 0}}]}
         assign_ids(obj)
-        self.assertEqual(obj["meta"]["id"], "dcb3b051457e")
-        self.assertEqual(obj["data"][0]["datasetId"], "343adc036597")
+        self.assertEqual(obj["meta"]["id"], "4d2ed5c83736")
+        self.assertEqual(obj["data"][0]["datasetId"], "dd91adba8444")
         self.assertNotIn("datasetId", obj["data"][1], "an entry without element and mass is left to validation")
 
     def test_canonical_text(self):
         obj = {"data": [{"comment": " ", "key": "", "zzz": 1,
                          "observable": {"lifetime": {"uncertainties": [], "unit": "ns", "value": 1}, "kind": "lifetime"},
                          "nuclide": {"isomer": 0, "mass": 0, "element": " Si "}, "datasetId": "x"}],
-               "meta": {"comment": "", "bibId": "10.1234/x", "id": "m", "relatedBibIds": []},
+               "meta": {"comment": "", "bibId": "DOI:10.1234/x", "id": "m", "relatedBibIds": []},
                "datasetType": "experiment", "sublibrary": "LT", "format": "muND/LT/1"}
         self.assertEqual(canonical_text(obj), (
             '{\n'
@@ -76,7 +76,7 @@ class FileTests(unittest.TestCase):
             '  "datasetType": "experiment",\n'
             '  "meta": {\n'
             '    "id": "m",\n'
-            '    "bibId": "10.1234/x"\n'
+            '    "bibId": "DOI:10.1234/x"\n'
             '  },\n'
             '  "data": [\n'
             '    {"datasetId": "x", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": '
