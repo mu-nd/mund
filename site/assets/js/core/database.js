@@ -1,20 +1,15 @@
-// The database as a set of files, and the checks applied to it
-// (twin of tools/mundlib/database.py).
+// The files under data/ and their checks
+// (twin of tools/mundlib/database.py; shared cases: tests/vectors/cases.json).
 //
-// Words used here and in the twin:
-//   file      one publication: a metadata record (`meta`) and its data entries
-//   entry     one element of `data`, identified by its datasetId
-//   code      EXP | TH | CUR | EVAL, the short form of a file's datasetType
-//
-//   1. syntax   - the file is JSON and written in the canonical layout
-//   2. schema   - the file follows schema/v1/*.schema.json
-//   3. semantic - identifiers match their definition and are unique,
-//                 references resolve, facilities exist ...
-//
-// tests/vectors/cases.json holds the cases both implementations must agree on.
+// Three layers of checks (docs/data-format.md §5):
+//   1. syntax    the file is JSON and written in its canonical form
+//   2. schema    the file follows schema/v1/*.schema.json
+//   3. semantic  identifiers match their definition and are unique, references
+//                resolve, facilities exist ...
 
 import * as ids from './ids.js';
 import * as jsonfmt from './jsonfmt.js';
+import { isObject, objects } from './jsonfmt.js';
 import * as schemaMod from './schema.js';
 import { sha256 } from './sha256.js';
 import { fileLabel, bibKind } from './cite.js';
@@ -34,25 +29,19 @@ export const MASTER_FORMATS = {
   'bibliography.json': 'muND/bibliography/1',
   'nuclides.json': 'muND/nuclides/1',
   'huff_factors.json': 'muND/huff-factors/1',
-  'constants.json': 'muND/constants/1',
-};
-export const MASTER_FILES = Object.keys(MASTER_FORMATS);
-// file "format" -> schema file in schema/v1
-export const SCHEMA_FILES = {
-  'muND/LT/1': 'lt.schema.json',
-  'muND/facilities/1': 'facilities.schema.json',
-  'muND/bibliography/1': 'bibliography.schema.json',
-  'muND/nuclides/1': 'nuclides.schema.json',
-  'muND/huff-factors/1': 'huff-factors.schema.json',
-  'muND/constants/1': 'constants.schema.json',
+  'constants.json': 'muND/constants/2',
 };
 
 const FILE_LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 function issue(level, code, file, pointer, message) {
   return { level, code, file, pointer, message };
+}
+
+function checkMass(issues, path, pointer, z, mass) {
+  if (Number.isInteger(z) && Number.isInteger(mass) && mass > 0 && mass < z) {
+    issues.push(issue('error', 'E_MASS_BELOW_Z', path, pointer, 'mass number is smaller than atomic number'));
+  }
 }
 
 /** One JSON file of the database, as text and parsed (numbers keep their digits). */
@@ -74,7 +63,7 @@ class DataFile {
   }
 
   get data() {
-    return isObject(this.obj) && Array.isArray(this.obj.data) ? this.obj.data.filter(isObject) : [];
+    return isObject(this.obj) ? objects(this.obj.data) : [];
   }
 
   /** EXP / TH / CUR / EVAL for the file's datasetType. */
@@ -90,14 +79,14 @@ export function filePath(obj, reference) {
 }
 
 export function fileCode(obj) {
-  return typeof obj.datasetType === 'string' && has(CODE_OF, obj.datasetType)
+  return typeof obj.datasetType === 'string' && Object.hasOwn(CODE_OF, obj.datasetType)
     ? CODE_OF[obj.datasetType] : null;
 }
 
 /** The value block of an entry: observable[observable.kind]. */
 export function quantity(entry) {
   const obs = isObject(entry.observable) ? entry.observable : {};
-  const block = typeof obs.kind === 'string' && has(obs, obs.kind) ? obs[obs.kind] : null;
+  const block = typeof obs.kind === 'string' && Object.hasOwn(obs, obs.kind) ? obs[obs.kind] : null;
   return isObject(block) ? block : null;
 }
 
@@ -128,10 +117,12 @@ export function entryHash(entry) {
 
 /** (Re)compute meta.id and every data[].datasetId in place. */
 export function assignIds(obj) {
+  if (!isObject(obj)) throw new Error('the top level is not an object');
+  if (!Array.isArray(obj.data)) throw new Error('data must be an array');
   const mid = expectedMetaId(obj);
   if (mid === null) throw new Error('datasetType and meta.bibId are needed to compute identifiers');
   obj.meta.id = mid;
-  for (const entry of obj.data || []) {
+  for (const entry of obj.data) {
     // an entry without element or mass keeps what it has; validation reports it
     const did = isObject(entry) ? expectedDataId(obj, entry, mid) : null;
     if (did !== null) entry.datasetId = did;
@@ -140,19 +131,15 @@ export function assignIds(obj) {
 }
 
 export class Database {
-  /**
-   * @param schemas {file name: schema object}, e.g. {'lt.schema.json': {...}}
-   * @param master  {file name: text} of data/master
-   */
-  constructor(schemas, master = {}) {
+  /** @param schemas {file name: schema object}, e.g. {'lt.schema.json': {...}} */
+  constructor(schemas) {
     this.schemas = schemas;
     this.files = new Map();   // path -> DataFile of a sub-library
     this.master = new Map();  // name -> DataFile
     this.unknown = new Set(); // other paths under data/
-    for (const name of Object.keys(master)) this.setMaster(name, master[name]);
   }
 
-  setMaster(name, text) {
+  #setMaster(name, text) {
     this.master.set(name, new DataFile(`${MASTER_DIR}/${name}`, text));
     this._tables = null;
     this._references = null;
@@ -181,7 +168,7 @@ export class Database {
   /** Add or replace any file under data/: a master table, a file of a sub-library, or neither. */
   setFile(path, text) {
     const name = path.startsWith(`${MASTER_DIR}/`) ? path.slice(MASTER_DIR.length + 1) : null;
-    if (name !== null && has(MASTER_FORMATS, name)) this.setMaster(name, text);
+    if (name !== null && Object.hasOwn(MASTER_FORMATS, name)) this.#setMaster(name, text);
     else if (isDataFilePath(path)) this.files.set(path, new DataFile(path, text));
     else this.unknown.add(path);
   }
@@ -200,20 +187,6 @@ export class Database {
     return [...this.files.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }
 
-  schemaFor(format) {
-    const name = SCHEMA_FILES[format];
-    return name ? this.schemas[name] || null : null;
-  }
-
-  /**
-   * Canonical text of a file's content: members in schema order, empty optional
-   * members dropped, canonical layout (twin of Database.canonical_text).
-   */
-  canonicalText(obj) {
-    const schema = isObject(obj) ? this.schemaFor(String(obj.format)) : null;
-    return jsonfmt.stringify(schema ? schemaMod.normalize(obj, schema) : obj);
-  }
-
   masterObj(name) {
     const f = this.master.get(name);
     return f && isObject(f.obj) ? f.obj : {};
@@ -223,9 +196,8 @@ export class Database {
     if (!this._tables) {
       this._tables = {
         ...nuclideTables(this.masterObj('nuclides.json')),
-        facilities: (this.masterObj('facilities.json').facilities || []).filter(isObject),
+        facilities: new Map(objects(this.masterObj('facilities.json').facilities).map((f) => [f.abbr, f])),
       };
-      this._tables.facilityAbbrs = new Set(this._tables.facilities.map((f) => f.abbr));
     }
     return this._tables;
   }
@@ -247,7 +219,7 @@ export class Database {
 
   validate() {
     const issues = [];
-    for (const name of MASTER_FILES) {
+    for (const name of Object.keys(MASTER_FORMATS)) {
       if (!this.master.has(name)) {
         issues.push(issue('error', 'E_MASTER_MISSING', `${MASTER_DIR}/${name}`, '', 'master table is missing'));
       }
@@ -256,74 +228,79 @@ export class Database {
       issues.push(issue('error', 'E_PATH', path, '',
         `not part of the database: files belong in ${DATA_DIR}/<sub-library>/<code>/ or are one of the master tables in ${MASTER_DIR}/`));
     }
-    for (const name of [...this.master.keys()].sort()) issues.push(...this.checkMaster(name, this.master.get(name)));
-    for (const f of this.sortedFiles()) issues.push(...this.checkFile(f));
-    issues.push(...this.checkCross());
+    for (const name of [...this.master.keys()].sort()) issues.push(...this.#checkMaster(name, this.master.get(name)));
+    for (const f of this.sortedFiles()) issues.push(...this.#checkFile(f));
+    issues.push(...this.#checkCross());
     return issues;
   }
 
-  checkSyntax(f) {
+  #checkSyntax(f) {
     if (f.parseError) return [issue('error', 'E_JSON', f.path, '', `not valid JSON: ${f.parseError}`)];
     if (!isObject(f.obj)) return [issue('error', 'E_JSON', f.path, '', 'the top level must be an object')];
     return [];
   }
 
-  checkSchema(f, schema) {
+  #checkSchema(f, schema) {
     const issues = schemaMod.validate(f.obj, schema).map((e) => issue('error', 'E_SCHEMA', f.path, e.pointer, e.message));
-    if (this.canonicalText(f.obj) !== f.text) {
+    if (schemaMod.canonicalText(f.obj, this.schemas) !== f.text) {
       issues.push(issue('error', 'E_CANONICAL', f.path, '', 'file is not in canonical form; run: python3 tools/mund.py fix'));
     }
     return issues;
   }
 
-  checkMaster(name, f) {
-    const syntax = this.checkSyntax(f);
+  #checkMaster(name, f) {
+    const syntax = this.#checkSyntax(f);
     if (syntax.length) return syntax;
     const format = MASTER_FORMATS[name];
     if (f.obj.format !== format) return [issue('error', 'E_FORMAT', f.path, '/format', `expected '${format}'`)];
-    const issues = this.checkSchema(f, this.schemaFor(format));
+    const issues = this.#checkSchema(f, schemaMod.schemaFor(format, this.schemas));
     if (name === 'facilities.json') {
-      issues.push(...this.checkUnique(f, 'facilities', 'abbr', 'E_DUPLICATE_FACILITY', (v) => v));
+      issues.push(...this.#checkUnique(f, 'facilities', 'abbr', 'E_DUPLICATE_FACILITY', (v) => v));
     }
     if (name === 'bibliography.json') {
-      issues.push(...this.checkUnique(f, 'references', 'id', 'E_DUPLICATE_REFERENCE', ids.normalizeBibId));
+      issues.push(...this.#checkUnique(f, 'references', 'id', 'E_DUPLICATE_REFERENCE', ids.normalizeBibId));
     }
-    if (name === 'constants.json') {
-      issues.push(...this.checkUnique(f, 'constants', 'name', 'E_DUPLICATE_CONSTANT', (v) => v));
-      issues.push(...this.checkConstants(f));
-    }
-    if (name === 'huff_factors.json') issues.push(...this.checkHuff(f));
+    if (name === 'nuclides.json') issues.push(...this.#checkNuclides(f));
+    if (name === 'huff_factors.json') issues.push(...this.#checkHuff(f));
     return issues;
   }
 
-  /** mu_plus_lifetime is required by the conversions: a positive value in ns. */
-  checkConstants(f) {
-    const found = (Array.isArray(f.obj.constants) ? f.obj.constants : [])
-      .map((c, i) => [i, c]).filter(([, c]) => isObject(c) && c.name === 'mu_plus_lifetime');
-    if (!found.length) {
-      return [issue('error', 'E_CONSTANT_MISSING', f.path, '/constants',
-        'mu_plus_lifetime (lifetime of the free positive muon, in ns) is required')];
-    }
+  #checkNuclides(f) {
     const issues = [];
-    for (const [i, c] of found) {
-      if (typeof c.unit === 'string' && c.unit !== 'ns') {
-        issues.push(issue('error', 'E_CONSTANT_UNIT', f.path, `/constants/${i}/unit`, `mu_plus_lifetime is given in ns, not '${c.unit}'`));
-      }
-      if (typeof c.value === 'number' && !(c.value > 0)) {
-        issues.push(issue('error', 'E_CONSTANT_VALUE', f.path, `/constants/${i}/value`, 'mu_plus_lifetime must be positive'));
-      }
+    const { elements } = f.obj;
+    const expected = schemaMod.schemaFor('muND/LT/1', this.schemas).$defs.element.enum;
+    if (Array.isArray(elements) && elements.every((e) => typeof e === 'string')
+      && (elements.length !== expected.length || elements.some((e, i) => e !== expected[i]))) {
+      issues.push(issue('error', 'E_ELEMENT_ORDER', f.path, '/elements', 'list the LT element symbols in atomic number order'));
+    }
+    for (const member of ['isotope_ranges', 'monoisotopic']) {
+      const seen = new Set();
+      (Array.isArray(f.obj[member]) ? f.obj[member] : []).forEach((row, i) => {
+        const z = row?.z;
+        if (!Number.isInteger(z)) return;
+        const ptr = `/${member}/${i}/z`;
+        if (seen.has(z)) issues.push(issue('error', 'E_DUPLICATE_Z', f.path, ptr, 'atomic number listed twice'));
+        if (Array.isArray(elements) && z > elements.length) {
+          issues.push(issue('error', 'E_UNKNOWN_Z', f.path, ptr, 'atomic number outside the element table'));
+        }
+        for (const field of member === 'isotope_ranges' ? ['a_min', 'a_max'] : ['a']) {
+          checkMass(issues, f.path, `/${member}/${i}/${field}`, z, row[field]);
+        }
+        seen.add(z);
+      });
     }
     return issues;
   }
 
   /** One Huff factor per element and per nuclide. */
-  checkHuff(f) {
+  #checkHuff(f) {
     const issues = [];
     for (const [member, fields] of [['by_element', ['z']], ['by_nuclide', ['z', 'a']]]) {
       const seen = new Set();
       (Array.isArray(f.obj[member]) ? f.obj[member] : []).forEach((item, i) => {
         const key = isObject(item) ? fields.map((k) => item[k]) : [];
         if (!key.length || !key.every(Number.isInteger)) return;
+        if (member === 'by_nuclide') checkMass(issues, f.path, `/by_nuclide/${i}/a`, ...key);
         const text = fields.map((k, j) => `${k.toUpperCase()}=${key[j]}`).join(' ');
         if (seen.has(text)) {
           issues.push(issue('error', 'E_DUPLICATE_HUFF', f.path, `/${member}/${i}`, `the Huff factor of ${text} is listed twice`));
@@ -334,7 +311,7 @@ export class Database {
     return issues;
   }
 
-  checkUnique(f, member, key, code, norm) {
+  #checkUnique(f, member, key, code, norm) {
     const issues = [];
     const seen = new Set();
     (Array.isArray(f.obj[member]) ? f.obj[member] : []).forEach((item, i) => {
@@ -348,23 +325,23 @@ export class Database {
     return issues;
   }
 
-  checkFile(f) {
-    const syntax = this.checkSyntax(f);
+  #checkFile(f) {
+    const syntax = this.#checkSyntax(f);
     if (syntax.length) return syntax;
     const sub = f.path.split('/')[1];
     if (!DEFINED_SUBLIBRARIES.includes(sub)) {
       return [issue('error', 'E_SUBLIBRARY_UNDEFINED', f.path, '', `the data format of sub-library ${sub} is not defined`)];
     }
     const format = f.obj.format;
-    const schema = typeof format === 'string' && format.startsWith(`muND/${sub}/`) ? this.schemaFor(format) : null;
+    const schema = typeof format === 'string' && format.startsWith(`muND/${sub}/`) ? schemaMod.schemaFor(format, this.schemas) : null;
     if (!schema) {
       return [issue('error', 'E_FORMAT', f.path, '/format', `${JSON.stringify(format)} is not a format of sub-library ${sub}`)];
     }
-    return this.checkSchema(f, schema).concat(this.checkContent(f));
+    return this.#checkSchema(f, schema).concat(this.#checkContent(f));
   }
 
   /** Semantic checks that need only this file and the master tables. */
-  checkContent(f) {
+  #checkContent(f) {
     const { obj, path, meta, code } = f;
     const tables = this.tables();
     const issues = [];
@@ -397,8 +374,10 @@ export class Database {
       // plausibility of the mass number
       const nuclide = isObject(entry.nuclide) ? entry.nuclide : {};
       if (Number.isInteger(nuclide.mass) && nuclide.mass > 0) {
-        const range = tables.ranges.get(this.zOf(nuclide.element));
-        if (range && !(range[0] - 8 <= nuclide.mass && nuclide.mass <= range[1] + 8)) {
+        const z = this.zOf(nuclide.element);
+        checkMass(issues, path, `/data/${i}/nuclide/mass`, z, nuclide.mass);
+        const range = tables.ranges.get(z);
+        if (nuclide.mass >= z && range && !(range[0] - 8 <= nuclide.mass && nuclide.mass <= range[1] + 8)) {
           issues.push(issue('warning', 'W_MASS_RANGE', path, `/data/${i}/nuclide/mass`,
             `mass number ${nuclide.mass} is unusual for ${nuclide.element} (known range ${range[0]}-${range[1]})`));
         }
@@ -413,7 +392,7 @@ export class Database {
     });
 
     // metadata
-    if (typeof meta.facility === 'string' && !tables.facilityAbbrs.has(meta.facility)) {
+    if (typeof meta.facility === 'string' && !tables.facilities.has(meta.facility)) {
       issues.push(issue('error', 'E_FACILITY', path, '/meta/facility', `'${meta.facility}' is not listed in ${MASTER_DIR}/facilities.json`));
     }
     // a DOI or an NSR keynumber has its bibliographic data in the bibliography; a muND key may have them
@@ -425,7 +404,7 @@ export class Database {
   }
 
   /** Identifiers that must be unique, and references between entries. */
-  checkCross() {
+  #checkCross() {
     const issues = [];
     const files = this.sortedFiles().filter((f) => isObject(f.obj));
     const metas = new Map();
@@ -444,9 +423,9 @@ export class Database {
         const first = entries.get(entry.datasetId);
         if (first) {
           issues.push(issue('error', 'E_DUPLICATE_ID', f.path, `/data/${i}/datasetId`,
-            `datasetId ${entry.datasetId} is also used in ${first.file.path} data[${first.index}]: give the entries different keys`));
+            `datasetId ${entry.datasetId} is also used in ${first.file.path}: give the entries different keys`));
         } else {
-          entries.set(entry.datasetId, { file: f, index: i, code: f.code, sublibrary: f.obj.sublibrary, entry });
+          entries.set(entry.datasetId, { file: f, code: f.code, sublibrary: f.obj.sublibrary, entry });
         }
       });
     }
@@ -461,7 +440,7 @@ export class Database {
           const current = entries.get(lid);
           if (current) {
             issues.push(issue('error', 'E_LEGACY_ID_CONFLICT', f.path, ptr,
-              `${lid} is the current datasetId of ${current.file.path} data[${current.index}]`));
+              `${lid} is the current datasetId of an entry in ${current.file.path}`));
           } else if (legacy.has(lid)) {
             issues.push(issue('error', 'E_LEGACY_ID_CONFLICT', f.path, ptr,
               `${lid} is also an earlier identifier of ${legacy.get(lid)}`));
@@ -478,13 +457,13 @@ export class Database {
           const oid = isObject(item) ? item.datasetId : null;
           if (typeof oid !== 'string') return;   // the schema reports it
           const ptr = `/data/${i}/originalData/${j}`;
-          if (seen.has(oid)) {
+          const current = entries.has(oid) ? oid : legacy.get(oid) ?? oid;
+          if (seen.has(current)) {
             issues.push(issue('error', 'E_ORIGINAL_DUPLICATE', f.path, ptr, `original data ${oid} is listed twice`));
             return;
           }
-          seen.add(oid);
-          const current = entries.has(oid) ? oid : legacy.get(oid);
-          const target = current === undefined ? null : entries.get(current);
+          seen.add(current);
+          const target = entries.get(current);
           if (!target || target.sublibrary !== f.obj.sublibrary) {
             issues.push(issue('error', 'E_ORIGINAL_MISSING', f.path, ptr, `original data ${oid} does not exist`));
           } else if (current === entry.datasetId) {

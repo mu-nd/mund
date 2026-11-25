@@ -4,16 +4,16 @@
 #   pixi run admin            the data entry tool on this computer
 #   pixi run admin-practice   the same on a throw-away copy
 #   pixi run login            log in to GitHub once
-#   pixi run -e ai admin      the tool with AI extraction (needs ANTHROPIC_API_KEY in the environment)
 #
-# pixi creates the environment in .pixi/ on first use; pixi.lock fixes the versions.
+# pixi creates the environment in .pixi/ on first use; versions are resolved when the
+# environment is installed.
 [workspace]
 name = "mund"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "osx-64", "linux-64", "win-64"]
 
 [dependencies]
-python = ">=3.11,<3.14"
+python = "3.13.*"
 jsonschema = ">=4.18"
 git = "*"
 gh = "*"
@@ -26,17 +26,3 @@ validate = "python tools/mund.py validate"
 fix = "python tools/mund.py fix"
 serve = "python tools/mund.py serve"
 test = "python -m unittest discover -s tests/python"
-
-[feature.js.dependencies]
-nodejs = ">=20"
-
-[feature.js.tasks]
-test-js = "node tests/js/run-node.mjs"
-
-# the Claude API client for AI extraction in the data entry tool (optional)
-[feature.ai.pypi-dependencies]
-anthropic = "*"
-
-[environments]
-dev = ["js"]
-ai = ["ai"]

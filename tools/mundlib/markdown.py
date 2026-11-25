@@ -1,8 +1,8 @@
 """Markdown to HTML for the documents in docs/, as far as they use it.
 
-Read: ATX headings (``#`` .. ``####``), paragraphs, fenced code blocks, tables
+Read: ATX headings (``#`` .. ``######``), paragraphs, fenced code blocks, tables
 (GitHub style; the alignment row is read and its marks are ignored), bullet
-(``*`` ``-``) and numbered lists whose items may continue on indented lines,
+(``*`` ``+`` ``-``) and numbered lists whose items may continue on indented lines,
 and inline code, links, ``**strong**`` and ``*emphasis*``.  Anything else is
 shown as text.  Headings get the identifiers GitHub gives them, so that links
 to ``file.md#section`` work on both.
@@ -21,6 +21,11 @@ _CODE_SPAN = re.compile(r"(`+)(.+?)\1")
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _STRONG = re.compile(r"\*\*(?!\s)(.+?)(?<!\s)\*\*")
 _EMPHASIS = re.compile(r"(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])")
+
+
+def _is_table(line: str, nxt: Optional[str]) -> bool:
+    """Whether a table starts at ``line``: a row followed by the alignment row ``nxt``."""
+    return line.lstrip().startswith("|") and nxt is not None and bool(_TABLE_RULE.match(nxt))
 
 
 def slug(text: str) -> str:
@@ -57,11 +62,12 @@ class _Renderer:
 
     # -- blocks ---------------------------------------------------------------
     def heading(self, level: int, text: str) -> str:
-        base = slug(self.plain(text))
+        plain = self.plain(text)
+        base = slug(plain)
         n = self.ids.get(base, 0)
         self.ids[base] = n + 1
         ident = base if n == 0 else "%s-%d" % (base, n)
-        self.headings.append((level, ident, self.plain(text)))
+        self.headings.append((level, ident, plain))
         return '<h%d id="%s">%s</h%d>' % (level, ident, self.inline(text), level)
 
     @staticmethod
@@ -112,8 +118,7 @@ class _Renderer:
         i, n = 0, len(lines)
 
         def starts_block(line: str, nxt: Optional[str]) -> bool:
-            return bool(_FENCE.match(line) or _HEADING.match(line) or _ITEM.match(line)
-                        or (line.lstrip().startswith("|") and nxt is not None and _TABLE_RULE.match(nxt)))
+            return bool(_FENCE.match(line) or _HEADING.match(line) or _ITEM.match(line)) or _is_table(line, nxt)
 
         while i < n:
             line = lines[i]
@@ -137,7 +142,7 @@ class _Renderer:
                 out.append(self.heading(len(m.group(1)), m.group(2)))
                 i += 1
                 continue
-            if line.lstrip().startswith("|") and nxt is not None and _TABLE_RULE.match(nxt):
+            if _is_table(line, nxt):
                 rows = [line, nxt]
                 i += 2
                 while i < n and lines[i].lstrip().startswith("|"):

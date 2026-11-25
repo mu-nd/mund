@@ -27,6 +27,16 @@ export function selectRows(rows, { z = 0, a = '', ds = CODES } = {}) {
 }
 
 /**
+ * The elements the element choices offer (the explorer; Home on phones): those with rows of the
+ * dataset codes `ds` (array or Set), in order of Z, and `also` (the element shown, 0 = none) even without such rows.
+ */
+export function elementsWithData(rows, ds, also = 0) {
+  const codes = new Set(ds);
+  return [...new Set(rows.filter((r) => codes.has(r.code)).map((r) => r.z).concat(also ? [also] : []))]
+    .sort((x, y) => x - y);
+}
+
+/**
  * Records of a CSV text (RFC 4180: fields separated by commas, quoted with
  * double quotes when needed; a quoted field may hold line breaks).
  * @returns {{fields: string[], text: string}[]}  `text`: the record as written, without its line break
@@ -116,7 +126,7 @@ export function describeFilters({ z = 0, a = '', ds = CODES } = {}, elements = [
  * @param version   a version of model.js ({label, root, manifest, meta, bibliography})
  * @param rows      the selected rows
  * @param filters   result of describeFilters()
- * @param citation  { paper, database }: how to cite (citation.citationTexts)
+ * @param citation  { paper, database }: how to cite (citationTexts of core/cite.js)
  * @param permalink address of the selection, with the version
  * @param dataLicence  the licence of the data as stated on the site
  */

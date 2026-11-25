@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
-"""muND command line tool.
+"""muND command line tool: check and fix the data files, compute identifiers,
+build the site, freeze releases and run the data entry tool.
 
-    python3 tools/mund.py admin             the data entry tool on this computer (--practice: a throw-away copy)
-    python3 tools/mund.py login             log in to GitHub once (needs gh; with pixi: pixi run login)
-    python3 tools/mund.py validate          check the files under data/ and the work area extraction/
-    python3 tools/mund.py fix [FILE...]     identifiers, canonical form and file name (default: all files)
-    python3 tools/mund.py id LT EXP 10.1103/PhysRevC.35.2212 [--element Si --mass 28]
-    python3 tools/mund.py build [--out DIR] build the web site into _site/
-    python3 tools/mund.py serve             build it and serve it on http://localhost:8000
-    python3 tools/mund.py dist --out DIR    the data files of the working tree (as data/latest/)
-    python3 tools/mund.py freeze COMMIT     store the files of the major release made by COMMIT in releases/
-    python3 tools/mund.py releases          check the frozen releases (files, sources, tags)
-
-Requires Python 3.9+ and the ``jsonschema`` package (pip install -r requirements.txt).
+python3 tools/mund.py -h lists the commands.
 """
 from __future__ import annotations
 
 import argparse
 import functools
 import http.server
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -27,14 +19,14 @@ sys.path.insert(0, str(HERE))
 
 from mundlib import CODES, DEFINED_SUBLIBRARIES, ids  # noqa: E402
 from mundlib import admin as admin_mod  # noqa: E402
-from mundlib import build as build_mod  # noqa: E402
-from mundlib import extraction as extraction_mod  # noqa: E402
-from mundlib.database import Database, assign_ids, canonical_text, file_path  # noqa: E402
+from mundlib import releases, site  # noqa: E402
+from mundlib.cite import is_bib_id  # noqa: E402
+from mundlib.database import MASTER_DIR, MASTER_FORMATS, Database, fix_files  # noqa: E402
 
 
 def cmd_validate(args) -> int:
     db = Database.load(args.root)
-    issues = db.validate() + extraction_mod.validate_work_area(args.root)
+    issues = db.validate()
     for issue in issues:
         print(issue)
     errors = sum(1 for i in issues if i.level == "error")
@@ -46,34 +38,16 @@ def cmd_validate(args) -> int:
 def cmd_fix(args) -> int:
     """Identifiers, canonical form and canonical file name of the given files (default: all)."""
     root = Path(args.root).resolve()
-    db = Database.load(root)
-    files = {f.path: f for f in list(db.files) + list(db.master.values())}
-    paths = [Path(p).resolve().relative_to(root).as_posix() for p in args.files] or sorted(files)
-    changed = 0
-    for rel in paths:
-        f = files.get(rel)
-        if f is None:
-            raise SystemExit("%s is not a file of the database" % rel)
-        if f.obj is None:
-            raise SystemExit("%s: not valid JSON: %s" % (rel, f.parse_error))
-        target = rel
-        if f in db.files:
-            assign_ids(f.obj)
-            target = file_path(f.obj, db.reference(f.meta.get("bibId")))
-        text = canonical_text(f.obj)
-        if text == f.text and target == rel:
-            continue
-        (root / target).parent.mkdir(parents=True, exist_ok=True)
-        (root / target).write_text(text, encoding="utf-8")
-        if target != rel:
-            (root / rel).unlink()
+    changed = fix_files(root, [Path(p).resolve().relative_to(root).as_posix() for p in args.files] or None)
+    for rel, target in changed:
         print("%s -> %s" % (rel, target) if target != rel else "fixed %s" % rel)
-        changed += 1
-    print("%d file(s) changed" % changed)
+    print("%d file(s) changed" % len(changed))
     return 0
 
 
 def cmd_id(args) -> int:
+    if not is_bib_id(args.bib_id):
+        raise ValueError("bibId must be DOI:<doi>, NSR:<keynumber> or muND:<name>, not %r" % args.bib_id)
     mid = ids.meta_id(args.sublibrary, args.code, args.bib_id, args.meta_key)
     print("MetaID  %s   <- %s" % (mid, ids.meta_source(args.sublibrary, args.code, args.bib_id, args.meta_key)))
     if args.element:
@@ -83,24 +57,23 @@ def cmd_id(args) -> int:
     return 0
 
 
-def cmd_dist(args) -> int:
-    manifest = build_mod.build_dist(args.root, args.out, args.label)
-    print("built %s (%s) in %s" % (manifest["label"], manifest["version"], args.out))
-    return 0
-
-
 def cmd_freeze(args) -> int:
-    manifest = build_mod.freeze_release(Path(args.root), args.commit)
+    manifest = releases.freeze_release(Path(args.root), args.commit)
     print("froze %s (%s, commit %s) in %s/%s"
-          % (manifest["label"], manifest["version"], manifest["commit"][:12], build_mod.RELEASES_DIR, manifest["label"]))
+          % (manifest["label"], manifest["version"], manifest["commit"][:12], releases.RELEASES_DIR, manifest["label"]))
     return 0
 
 
 def cmd_releases(args) -> int:
     failed = False
-    labels = build_mod.frozen_releases(Path(args.root))
+    root = Path(args.root)
+    labels = releases.frozen_releases(root)
+    for label in releases.tagged_major_releases(root):
+        if label not in labels:
+            print("error: missing frozen folder releases/%s" % label)
+            failed = True
     for label in labels:
-        report = build_mod.verify_release(Path(args.root), label)
+        report = releases.verify_release(root, label)
         for text in report["errors"]:
             print("error: " + text)
         for text in report["warnings"]:
@@ -113,7 +86,7 @@ def cmd_releases(args) -> int:
 
 
 def cmd_build(args) -> int:
-    versions = build_mod.build_site(args.root, args.out)
+    versions = site.build_site(args.root, args.out)
     for v in versions["versions"]:
         print("  %-8s %s" % (v["label"], v["version"]))
     print("site written to %s (default version: %s)" % (args.out, versions["default"]))
@@ -130,6 +103,7 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def cmd_serve(args) -> int:
+    args.out = os.path.abspath(args.out)   # the build may move the folder a relative path names
     cmd_build(args)
     handler = functools.partial(_Handler, directory=str(args.out))
     with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler) as httpd:
@@ -183,11 +157,6 @@ def main(argv=None) -> int:
     p.add_argument("--key", default=None)
     p.set_defaults(func=cmd_id)
 
-    p = sub.add_parser("dist", help="the data files of the working tree")
-    p.add_argument("--out", required=True)
-    p.add_argument("--label", default="latest")
-    p.set_defaults(func=cmd_dist)
-
     p = sub.add_parser("freeze", help="store the files of a major release in releases/")
     p.add_argument("commit", help="the release commit (the one that set VERSION to N.0.0)")
     p.set_defaults(func=cmd_freeze)
@@ -205,7 +174,15 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.command in ("build", "serve") and args.out is None:
         args.out = str(Path(args.root) / "_site")
-    return args.func(args)
+    try:
+        if args.command in ("fix", "releases"):
+            master = Path(args.root) / MASTER_DIR
+            if not any((master / name).is_file() for name in MASTER_FORMATS):
+                raise ValueError("%s is not a muND database root (no master tables)" % args.root)
+        return args.func(args)
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

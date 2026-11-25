@@ -2,27 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ribf.riken.jp/muon/schema/v1/constants.schema.json",
   "title": "muND physical constants",
-  "description": "Physical constants used by the conversions. mu_plus_lifetime (ns) is required.",
+  "description": "Physical constants used by the conversions.",
   "type": "object",
   "properties": {
-    "format": {"const": "muND/constants/1"},
-    "constants": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-          "value": {"type": "number"},
-          "unit": {"type": "string", "minLength": 1},
-          "description": {"type": "string", "minLength": 1},
-          "source": {"type": "string", "minLength": 1}
-        },
-        "required": ["name", "value", "unit", "description", "source"],
-        "additionalProperties": false
+    "format": {"const": "muND/constants/2"},
+    "mu_plus_lifetime": {
+      "type": "object",
+      "description": "Mean lifetime of the free positive muon, in ns.",
+      "properties": {
+        "value": {"type": "number", "exclusiveMinimum": 0},
+        "unit": {"const": "ns"},
+        "source": {"type": "string", "minLength": 1}
       },
-      "minItems": 1
+      "required": ["value", "unit", "source"],
+      "additionalProperties": false
     }
   },
-  "required": ["format", "constants"],
+  "required": ["format", "mu_plus_lifetime"],
   "additionalProperties": false
 }

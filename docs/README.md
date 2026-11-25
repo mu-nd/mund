@@ -1,7 +1,7 @@
 # Documentation
 
-muND is a set of JSON files in a git repository, one file per publication,
-checked automatically on every change.
+muND is a set of JSON files in a git repository, one file per metadata record
+and its entries, checked automatically on every change.
 
 ## For users
 
@@ -17,13 +17,41 @@ checked automatically on every change.
 
 ## For contributors and maintainers
 
+Set up once with [pixi](https://pixi.sh), which provides Python, git and the
+GitHub CLI as declared in `pixi.toml`:
+
+```sh
+pixi exec --spec git -- git clone https://github.com/mu-nd/mund
+cd mund
+pixi run login        # log in to GitHub, to save from the data entry tool
+pixi run admin        # the data entry tool
+```
+
+For setup without pixi, install Python 3.9 or newer, git and the GitHub CLI
+(`gh`). In a POSIX shell, run the commands below. In Windows PowerShell,
+use `py -3 -m venv .venv` to create the environment and
+`.\.venv\Scripts\Activate.ps1` to activate it.
+
+```sh
+git clone https://github.com/mu-nd/mund
+cd mund
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python tools/mund.py login
+python tools/mund.py admin
+```
+
+Section 1 of the [Japanese guide](admin-guide.ja.md) describes login with pixi.
+
+`python3 tools/mund.py -h` lists the commands. `pixi run test` runs the Python
+tests; CI also runs `node tests/js/run-node.mjs`, and
+[/tests/](https://ribf.riken.jp/muon/tests/) runs the site's part in a browser.
+
 | Task | How |
 |---|---|
-| Set up | Python 3.9 or newer with the packages of `requirements.txt`, or [pixi](https://pixi.sh); to enter data, also clone the repository and log in to GitHub: [admin-guide.ja.md](admin-guide.ja.md), section 1 (Japanese) |
-| Propose a change to the data | fork [`mu-nd/mund`](https://github.com/mu-nd/mund); add or edit files under `data/`, one file per publication ([Data format](data-format.md)); run `python3 tools/mund.py fix` (identifiers, canonical form, file name), then the same with `validate`; open a pull request against `main`. The checks and the tests run on it; the site is updated after it is merged |
+| Propose a change to the data | fork [`mu-nd/mund`](https://github.com/mu-nd/mund); add or edit files under `data/`, one file per metadata record ([Data format](data-format.md)); run `python3 tools/mund.py fix` (identifiers, canonical form, file name; it does not change an identifier a file already has: such a change is made in the data entry tool, which keeps the old one in `legacyIds`), then the same with `validate`; open a pull request against `main`. The checks and the tests run on it; the site is updated after it is merged |
 | Enter and correct data (maintainers) | `pixi run admin` opens the data entry tool on your computer: open a file, edit it, press **Save**. The tool checks the database, records the change under your name and sends it to `main`; the site is rebuilt a few minutes later. A practice copy: `pixi run admin-practice` ([admin-guide.ja.md](admin-guide.ja.md), section 2) |
-| Read values from a publication (maintainers) | the extraction work area of the tool: every value is read twice and compared before it is entered ([extraction.ja.md](extraction.ja.md), Japanese) |
 | Release a version (maintainers) | the tool's page **Publish a version** (版を公開) ([Versions and citing](versioning.md)) |
 | Publish the site (maintainers) | GitHub Actions builds it from `main`; serving it at ribf.riken.jp: [deployment.ja.md](deployment.ja.md) (Japanese) |
-| Check, build and test from the command line | `tools/mund.py`: `validate`, `fix`, `id` (compute a MetaID or DataID), `build` and `serve` (the site), `freeze` and `releases` (frozen releases); `pixi run test` runs the tests, and the [browser tests](https://ribf.riken.jp/muon/tests/) run those of the site's scripts in your browser |
 | Look up why something is as it is | [history.ja.md](history.ja.md): the decisions, their reasons and the open questions (Japanese) |

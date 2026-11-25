@@ -1,6 +1,8 @@
 {
-  "format": "muND/constants/1",
-  "constants": [
-    {"name": "mu_plus_lifetime", "value": 2196.9811, "unit": "ns", "description": "Mean lifetime of the free positive muon", "source": "Particle Data Group, Review of Particle Physics (2024)"}
-  ]
+  "format": "muND/constants/2",
+  "mu_plus_lifetime": {
+    "value": 2196.9811,
+    "unit": "ns",
+    "source": "Particle Data Group, Review of Particle Physics (2024)"
+  }
 }

@@ -1,33 +1,27 @@
 """The files under ``data/`` and their checks
-(twin of ``site/assets/js/core/database.js``; shared cases in ``tests/vectors/cases.json``).
+(twin of ``site/assets/js/core/database.js``; shared cases: ``tests/vectors/cases.json``).
 
-Three layers of checks:
+Three layers of checks (``docs/data-format.md`` §5)::
 
-1. *Syntax*   - the file is JSON, written in its canonical form.
-2. *Schema*   - the file follows ``schema/v1/*.schema.json``.
-3. *Semantic* - identifiers match their definition and are unique, references
-   between entries resolve, facilities exist ...
-
-A file of a sub-library (see ``docs/data-format.md``)::
-
-    {"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "experiment",
-     "meta": {"id": MetaID, "bibId": "DOI:...", ...},
-     "data": [{"datasetId": DataID,
-               "nuclide": {"element": "Si", "mass": 28, "isomer": 0},
-               "observable": {"kind": "lifetime",
-                              "lifetime": {"value": 743.9, "unit": "ns",
-                                           "uncertainties": [{"source": "total", "value": 5.0}]}}}]}
+    1. syntax    the file is JSON and written in its canonical form
+    2. schema    the file follows schema/v1/*.schema.json
+    3. semantic  identifiers match their definition and are unique, references
+                 resolve, facilities exist ...
 """
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from . import CODE_OF, DEFINED_SUBLIBRARIES, SUBLIBRARIES, ids, jsonfmt
 from . import schema as schema_mod
 from .cite import bib_kind, file_label
+from .jsonfmt import as_dict, is_int, is_number, objects
 
 DATA_DIR = "data"
 MASTER_DIR = "data/master"
@@ -37,7 +31,7 @@ MASTER_FORMATS = {
     "bibliography.json": "muND/bibliography/1",
     "nuclides.json": "muND/nuclides/1",
     "huff_factors.json": "muND/huff-factors/1",
-    "constants.json": "muND/constants/1",
+    "constants.json": "muND/constants/2",
 }
 DATA_FILE_RE = re.compile(r"^%s/(%s)/.+\.json$" % (DATA_DIR, "|".join(SUBLIBRARIES)))
 FILE_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]*$")
@@ -58,8 +52,9 @@ class Issue:
         return "%-7s %-20s %s: %s" % (self.level.upper(), self.code, where, self.message)
 
 
-def _dict(value) -> dict:
-    return value if isinstance(value, dict) else {}
+def _check_mass(issues, path, pointer, z, mass):
+    if is_int(z) and is_int(mass) and 0 < mass < z:
+        issues.append(Issue("error", "E_MASS_BELOW_Z", path, pointer, "mass number is smaller than atomic number"))
 
 
 def is_data_file_path(path: str) -> bool:
@@ -82,16 +77,15 @@ class DataFile:
 
     @property
     def meta(self) -> dict:
-        return _dict(_dict(self.obj).get("meta"))
+        return as_dict(as_dict(self.obj).get("meta"))
 
     @property
     def data(self) -> list:
-        d = _dict(self.obj).get("data")
-        return [e for e in d if isinstance(e, dict)] if isinstance(d, list) else []
+        return objects(as_dict(self.obj).get("data"))
 
     @property
     def code(self) -> Optional[str]:
-        return file_code(_dict(self.obj))
+        return file_code(as_dict(self.obj))
 
 
 def file_code(obj: dict) -> Optional[str]:
@@ -102,23 +96,17 @@ def file_code(obj: dict) -> Optional[str]:
 
 def file_path(obj: dict, reference: Optional[dict] = None) -> str:
     """Canonical path of a file: ``data/<sub-library>/<code>/<label>_<MetaID>.json``."""
-    meta = _dict(obj.get("meta"))
+    meta = as_dict(obj.get("meta"))
     return "%s/%s/%s/%s_%s.json" % (DATA_DIR, obj.get("sublibrary"), file_code(obj),
                                     file_label(meta, reference), meta.get("id"))
 
 
 def quantity(entry: dict) -> Optional[dict]:
     """The value block of an entry: ``observable[observable.kind]``."""
-    obs = _dict(entry.get("observable"))
+    obs = as_dict(entry.get("observable"))
     kind = obs.get("kind")
     block = obs.get(kind) if isinstance(kind, str) else None
     return block if isinstance(block, dict) else None
-
-
-def canonical_text(obj) -> str:
-    """Members in schema order, empty optional members dropped, canonical layout."""
-    schema = schema_mod.schema_for(_dict(obj).get("format"))
-    return jsonfmt.dumps(schema_mod.normalize(obj, schema) if schema is not None else obj)
 
 
 def entry_hash(entry: dict) -> str:
@@ -131,7 +119,7 @@ def entry_hash(entry: dict) -> str:
 
 
 def expected_meta_id(obj: dict) -> Optional[str]:
-    meta = _dict(obj.get("meta"))
+    meta = as_dict(obj.get("meta"))
     code = file_code(obj)
     if not isinstance(meta.get("bibId"), str) or code is None:
         return None
@@ -140,10 +128,9 @@ def expected_meta_id(obj: dict) -> Optional[str]:
 
 
 def expected_data_id(obj: dict, entry: dict, meta_id: str) -> Optional[str]:
-    nuclide = _dict(entry.get("nuclide"))
+    nuclide = as_dict(entry.get("nuclide"))
     mass = nuclide.get("mass")
-    if not isinstance(nuclide.get("element"), str) or isinstance(mass, bool) \
-            or not isinstance(mass, (int, float)):
+    if not isinstance(nuclide.get("element"), str) or not is_number(mass):
         return None
     key = entry.get("key") if isinstance(entry.get("key"), str) else None
     return ids.data_id(str(obj.get("sublibrary")), file_code(obj), nuclide["element"], mass,
@@ -155,11 +142,15 @@ def assign_ids(obj: dict) -> dict:
 
     An entry without element or mass keeps what it has; validation reports it.
     """
+    if not isinstance(obj, dict):
+        raise ValueError("the top level is not an object")
+    if not isinstance(obj.get("data"), list):
+        raise ValueError("data must be an array")
     mid = expected_meta_id(obj)
     if mid is None:
         raise ValueError("datasetType and meta.bibId are needed to compute identifiers")
     obj["meta"]["id"] = mid
-    for entry in obj.get("data", []):
+    for entry in obj["data"]:
         did = expected_data_id(obj, entry, mid) if isinstance(entry, dict) else None
         if did is not None:
             entry["datasetId"] = did
@@ -179,7 +170,7 @@ class Database:
     def load(cls, root) -> "Database":
         """Every ``*.json`` file under ``<root>/data``."""
         root = Path(root)
-        texts = {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8")
+        texts = {p.relative_to(root).as_posix(): p.read_bytes().decode("utf-8")
                  for p in (root / DATA_DIR).glob("**/*.json")}
         return cls.from_texts(texts)
 
@@ -217,23 +208,23 @@ class Database:
         return self.references().get(ids.normalize_bib_id(bib_id)) if isinstance(bib_id, str) else None
 
     def tables(self) -> dict:
-        """Look-up tables of the nuclide and facility lists."""
+        """Look-up tables of the nuclide and facility lists; items of the wrong type
+        (which the schema check reports) are left out."""
         if self._tables is None:
             nuclides = self.master_obj("nuclides.json")
             elements = nuclides.get("elements") if isinstance(nuclides.get("elements"), list) else []
-            ranges = nuclides.get("isotope_ranges") if isinstance(nuclides.get("isotope_ranges"), list) else []
-            facilities = self.master_obj("facilities.json").get("facilities")
             self._tables = {
                 "elements": elements,
-                "z_of": {e: i + 1 for i, e in enumerate(elements)},
-                "ranges": {r.get("z"): (r.get("a_min"), r.get("a_max")) for r in ranges if isinstance(r, dict)},
-                "facilities": {f.get("abbr") for f in facilities if isinstance(f, dict)}
-                if isinstance(facilities, list) else set(),
+                "z_of": {e: i + 1 for i, e in enumerate(elements) if isinstance(e, str)},
+                "ranges": {r["z"]: (r["a_min"], r["a_max"]) for r in objects(nuclides.get("isotope_ranges"))
+                           if all(is_number(r.get(k)) for k in ("z", "a_min", "a_max"))},
+                "facilities": {f["abbr"]: f for f in objects(self.master_obj("facilities.json").get("facilities"))
+                               if isinstance(f.get("abbr"), str)},
             }
         return self._tables
 
     def z_of(self, element) -> int:
-        return self.tables()["z_of"].get(element, 0)
+        return self.tables()["z_of"].get(element, 0) if isinstance(element, str) else 0
 
     # -- validation --------------------------------------------------------
     def validate(self) -> List[Issue]:
@@ -264,8 +255,8 @@ class Database:
     @staticmethod
     def _check_schema(f: DataFile, schema: dict) -> List[Issue]:
         issues = [Issue("error", "E_SCHEMA", f.path, ptr, msg)
-                  for ptr, msg in schema_mod.validate(jsonfmt.plain(f.obj), schema)]
-        if canonical_text(f.obj) != f.text:
+                  for ptr, msg in schema_mod.validate(f.obj, schema)]
+        if schema_mod.canonical_text(f.obj) != f.text:
             issues.append(Issue("error", "E_CANONICAL", f.path, "",
                                 "file is not in canonical form; run: python3 tools/mund.py fix"))
         return issues
@@ -284,31 +275,35 @@ class Database:
         if name == "bibliography.json":
             issues.extend(self._check_unique(f, "references", "id", "E_DUPLICATE_REFERENCE",
                                              ids.normalize_bib_id))
-        if name == "constants.json":
-            issues.extend(self._check_unique(f, "constants", "name", "E_DUPLICATE_CONSTANT", lambda v: v))
-            issues.extend(self._check_constants(f))
+        if name == "nuclides.json":
+            issues.extend(self._check_nuclides(f))
         if name == "huff_factors.json":
             issues.extend(self._check_huff(f))
         return issues
 
     @staticmethod
-    def _check_constants(f: DataFile) -> List[Issue]:
-        """mu_plus_lifetime is required by the conversions: a positive value in ns."""
-        items = f.obj.get("constants")
-        found = [(i, c) for i, c in enumerate(items if isinstance(items, list) else [])
-                 if isinstance(c, dict) and c.get("name") == "mu_plus_lifetime"]
-        if not found:
-            return [Issue("error", "E_CONSTANT_MISSING", f.path, "/constants",
-                          "mu_plus_lifetime (lifetime of the free positive muon, in ns) is required")]
+    def _check_nuclides(f: DataFile) -> List[Issue]:
         issues = []
-        for i, c in found:
-            if isinstance(c.get("unit"), str) and c["unit"] != "ns":
-                issues.append(Issue("error", "E_CONSTANT_UNIT", f.path, "/constants/%d/unit" % i,
-                                    "mu_plus_lifetime is given in ns, not %r" % c["unit"]))
-            value = c.get("value")
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and not value > 0:
-                issues.append(Issue("error", "E_CONSTANT_VALUE", f.path, "/constants/%d/value" % i,
-                                    "mu_plus_lifetime must be positive"))
+        elements = f.obj.get("elements")
+        expected = schema_mod.schema_for("muND/LT/1")["$defs"]["element"]["enum"]
+        if isinstance(elements, list) and all(isinstance(e, str) for e in elements) and elements != expected:
+            issues.append(Issue("error", "E_ELEMENT_ORDER", f.path, "/elements",
+                                "list the LT element symbols in atomic number order"))
+        for member in ("isotope_ranges", "monoisotopic"):
+            seen = set()
+            rows = f.obj.get(member)
+            for i, row in enumerate(rows if isinstance(rows, list) else []):
+                z = as_dict(row).get("z")
+                if not is_int(z):
+                    continue
+                ptr = "/%s/%d/z" % (member, i)
+                if z in seen:
+                    issues.append(Issue("error", "E_DUPLICATE_Z", f.path, ptr, "atomic number listed twice"))
+                if isinstance(elements, list) and z > len(elements):
+                    issues.append(Issue("error", "E_UNKNOWN_Z", f.path, ptr, "atomic number outside the element table"))
+                for field in (("a_min", "a_max") if member == "isotope_ranges" else ("a",)):
+                    _check_mass(issues, f.path, "/%s/%d/%s" % (member, i, field), z, row.get(field))
+                seen.add(z)
         return issues
 
     @staticmethod
@@ -320,8 +315,10 @@ class Database:
             items = f.obj.get(member)
             for i, item in enumerate(items if isinstance(items, list) else []):
                 key = tuple(item.get(k) for k in fields) if isinstance(item, dict) else ()
-                if not key or not all(isinstance(k, int) and not isinstance(k, bool) for k in key):
+                if not key or not all(is_int(k) for k in key):
                     continue
+                if member == "by_nuclide":
+                    _check_mass(issues, f.path, "/by_nuclide/%d/a" % i, *key)
                 if key in seen:
                     issues.append(Issue("error", "E_DUPLICATE_HUFF", f.path, "/%s/%d" % (member, i),
                                         "the Huff factor of %s is listed twice"
@@ -390,11 +387,13 @@ class Database:
                                         "datasetId should be %s for this element / mass / key" % did))
 
             # plausibility of the mass number
-            nuclide = _dict(entry.get("nuclide"))
+            nuclide = as_dict(entry.get("nuclide"))
             mass = nuclide.get("mass")
-            if isinstance(mass, int) and not isinstance(mass, bool) and mass > 0:
-                rng = ranges.get(self.z_of(nuclide.get("element")))
-                if rng and not (rng[0] - 8 <= mass <= rng[1] + 8):
+            if is_int(mass) and mass > 0:
+                z = self.z_of(nuclide.get("element"))
+                _check_mass(issues, path, "/data/%d/nuclide/mass" % i, z, mass)
+                rng = ranges.get(z)
+                if mass >= z and rng and not (rng[0] - 8 <= mass <= rng[1] + 8):
                     issues.append(Issue("warning", "W_MASS_RANGE", path, "/data/%d/nuclide/mass" % i,
                                         "mass number %d is unusual for %s (known range %d-%d)"
                                         % (mass, nuclide.get("element"), rng[0], rng[1])))
@@ -403,7 +402,7 @@ class Database:
             block = quantity(entry)
             uncertainties = block.get("uncertainties") if block else None
             if isinstance(uncertainties, list) and \
-                    sum(1 for u in uncertainties if _dict(u).get("source") == "total") > 1:
+                    sum(1 for u in uncertainties if as_dict(u).get("source") == "total") > 1:
                 issues.append(Issue("error", "E_UNCERTAINTY_TOTAL", path,
                                     "/data/%d/observable/%s/uncertainties" % (i, entry["observable"]["kind"]),
                                     "only one uncertainty may have the source 'total'"))
@@ -442,10 +441,10 @@ class Database:
                 first = entries.get(did)
                 if first is not None:
                     issues.append(Issue("error", "E_DUPLICATE_ID", f.path, "/data/%d/datasetId" % i,
-                                        "datasetId %s is also used in %s data[%d]: give the entries "
-                                        "different keys" % (did, first["file"].path, first["index"])))
+                                        "datasetId %s is also used in %s: give the entries different keys"
+                                        % (did, first["file"].path)))
                 else:
-                    entries[did] = {"file": f, "index": i, "code": f.code,
+                    entries[did] = {"file": f, "code": f.code,
                                     "sublibrary": f.obj.get("sublibrary"), "entry": entry}
         # earlier identifiers: each names exactly one entry and is nobody's current identifier
         legacy: Dict[str, str] = {}       # earlier id -> current datasetId
@@ -459,8 +458,8 @@ class Database:
                     current = entries.get(lid)
                     if current is not None:
                         issues.append(Issue("error", "E_LEGACY_ID_CONFLICT", f.path, ptr,
-                                            "%s is the current datasetId of %s data[%d]"
-                                            % (lid, current["file"].path, current["index"])))
+                                            "%s is the current datasetId of an entry in %s"
+                                            % (lid, current["file"].path)))
                     elif lid in legacy:
                         issues.append(Issue("error", "E_LEGACY_ID_CONFLICT", f.path, ptr,
                                             "%s is also an earlier identifier of %s" % (lid, legacy[lid])))
@@ -475,13 +474,13 @@ class Database:
                     if not isinstance(oid, str):
                         continue                  # the schema reports it
                     ptr = "/data/%d/originalData/%d" % (i, j)
-                    if oid in seen:
+                    current = oid if oid in entries else legacy.get(oid, oid)
+                    if current in seen:
                         issues.append(Issue("error", "E_ORIGINAL_DUPLICATE", f.path, ptr,
                                             "original data %s is listed twice" % oid))
                         continue
-                    seen.add(oid)
-                    current = oid if oid in entries else legacy.get(oid)
-                    target = entries.get(current) if current is not None else None
+                    seen.add(current)
+                    target = entries.get(current)
                     if target is None or target["sublibrary"] != f.obj.get("sublibrary"):
                         issues.append(Issue("error", "E_ORIGINAL_MISSING", f.path, ptr,
                                             "original data %s does not exist" % oid))
@@ -505,3 +504,109 @@ class Database:
                                                 "(entryHash %s, now %s): check this entry again, then "
                                                 "record the new entryHash" % (current, recorded, now)))
         return issues
+
+
+def _id_changes(before: dict, after: dict) -> List[str]:
+    """``meta.id OLD -> NEW`` and ``datasetId OLD -> NEW`` for each identifier that is there and differs."""
+    pairs = [("meta.id", as_dict(before.get("meta")).get("id"), as_dict(after.get("meta")).get("id"))]
+    if isinstance(before.get("data"), list):
+        pairs += [("datasetId", as_dict(old).get("datasetId"), as_dict(new).get("datasetId"))
+                  for old, new in zip(before["data"], after["data"])]
+    return ["%s %s -> %s" % (name, old, new) for name, old, new in pairs if old not in (None, "") and old != new]
+
+
+def fix_files(root, paths=None) -> List[Tuple[str, str]]:
+    """Write files of the database with their missing identifiers filled in, in canonical
+    form and under their canonical file name; returns ``(old path, new path)`` of each file written.
+
+    ``paths`` are relative to ``root`` (default: every file).  All files are checked before
+    any is written, and nothing is written when one of them cannot be fixed: it is not a JSON
+    object, an identifier it has would change (the data entry tool makes that change and keeps
+    the old identifier in ``legacyIds``), or its file name would be that of another file.
+    """
+    root = Path(root)
+    db = Database.load(root)
+    if paths is None:
+        for folder in sorted((root / DATA_DIR).glob("*")):
+            if folder.is_dir() and folder.name not in (*DEFINED_SUBLIBRARIES, "master"):
+                raise ValueError("%s: undefined sub-library" % folder.relative_to(root))
+        if db.unknown:
+            raise ValueError("%s is not a file of the database" % db.unknown[0])
+    files = {f.path: f for f in db.files + list(db.master.values())}
+    plans: Dict[str, Tuple[str, bytes]] = {}      # target -> (source, encoded contents)
+    owners = {rel.casefold(): rel for rel in files}
+    for rel in sorted(files) if paths is None else dict.fromkeys(paths):
+        f = files.get(rel)
+        if f is None:
+            raise ValueError("%s is not a file of the database" % rel)
+        if f.parse_error is not None:
+            raise ValueError("%s: not valid JSON: %s" % (rel, f.parse_error))
+        if not isinstance(f.obj, dict):
+            raise ValueError("%s: the top level is not an object" % rel)
+        obj, target = f.obj, rel
+        if is_data_file_path(rel):
+            sub = rel.split("/")[1]
+            fmt = obj.get("format")
+            schema = schema_mod.schema_for(fmt)
+            if sub not in DEFINED_SUBLIBRARIES or schema is None or not fmt.startswith("muND/%s/" % sub):
+                raise ValueError("%s: undefined sub-library or format %r" % (rel, fmt))
+            obj = schema_mod.normalize(obj, schema)
+            if obj.get("sublibrary") != sub:
+                raise ValueError("%s: expected sub-library %s" % (rel, sub))
+            try:
+                assign_ids(obj)
+            except ValueError as exc:
+                raise ValueError("%s: %s" % (rel, exc)) from None
+            changes = _id_changes(f.obj, obj)
+            if changes:
+                more = " and %d more" % (len(changes) - 3) if len(changes) > 3 else ""
+                raise ValueError("%s: identifiers would change (%s%s); make this change in the data entry "
+                                 "tool, which keeps the old ID in legacyIds" % (rel, ", ".join(changes[:3]), more))
+            target = file_path(obj, db.reference(obj["meta"].get("bibId")))
+            allowed = root.resolve() / DATA_DIR / sub
+            if any(not (root / path).resolve().is_relative_to(allowed) for path in (rel, target)):
+                raise ValueError("%s: path outside %s" % (rel, allowed))
+        text = schema_mod.canonical_text(obj)
+        if text == f.text and target == rel:
+            continue
+        other = owners.get(target.casefold())
+        if other is not None and other != rel:
+            raise ValueError("%s: its file name would be %s, which another file has: %s" % (rel, target, other))
+        owners[target.casefold()] = rel
+        if target != rel and (root / target).exists() \
+                and not (root / target).samefile(root / rel):
+            raise ValueError("%s: its file name would be %s, which another file has (same MetaID?)" % (rel, target))
+        if not os.access(root / rel, os.W_OK):
+            raise PermissionError("%s is not writable" % rel)
+        plans[target] = (rel, text.encode("utf-8"))
+    if not plans:
+        return []
+
+    work = Path(tempfile.mkdtemp(prefix=".mund-fix-", dir=root))
+    backups, installed, created_dirs = [], [], []
+    try:
+        for i, (target, (rel, content)) in enumerate(plans.items()):
+            staged = work / str(i)
+            staged.write_bytes(content)
+            shutil.copymode(root / rel, staged)
+            parent = (root / target).parent
+            if not parent.exists():
+                parent.mkdir()
+                created_dirs.append(parent)
+        for i, (target, (rel, _)) in enumerate(plans.items()):
+            backup = work / ("%d.orig" % i)
+            (root / rel).rename(backup)
+            backups.append((backup, root / rel))
+            (work / str(i)).replace(root / target)
+            installed.append(root / target)
+    except BaseException:
+        for path in reversed(installed):
+            path.unlink()
+        for backup, original in reversed(backups):
+            backup.rename(original)
+        for folder in reversed(created_dirs):
+            folder.rmdir()
+        shutil.rmtree(work)
+        raise
+    shutil.rmtree(work)
+    return [(rel, target) for target, (rel, _) in plans.items()]

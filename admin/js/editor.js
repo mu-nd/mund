@@ -1,86 +1,81 @@
 // Editor of one dataset file: the form (reference card, conditions, data
-// grid), the JSON text and the changes since the last save.
+// grid) and the JSON text.
 //
 // Every edit marks the document dirty; a quarter of a second later (and when
 // the page is left) the document is stored as a draft in the workspace under
-// its canonical file name.  The 保存 (save) card above the form saves all
-// drafts at once.  A document is stored only once it has a valid bibId, and
+// its canonical file name.  The 保存 (save) card above the form shows the
+// changes since the last save and saves all drafts at once.  A document is stored only once it has a valid bibId, and
 // never over another registered file.
 //
-// The entries are followed by datasetId (document.js, IdTracker).  When the
+// The document, its file and the identity of its entries are held by a Draft
+// (document.js), which follows the entries by datasetId.  When the
 // identifiers of a saved entry change, the editor asks whether it is a
 // correction of the same entry or different data, and neither saves nor lets
 // the page be left before that is chosen.
 
-import { h, replace, clear } from '../../site/assets/js/core/dom.js';
+import { h, replace, card } from '../../site/assets/js/core/dom.js';
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
-import { expectedMetaId, fileCode, filePath, assignIds } from '../../site/assets/js/core/database.js';
+import { isObject } from '../../site/assets/js/core/jsonfmt.js';
+import { fileCode } from '../../site/assets/js/core/database.js';
 import { citeLabel, citeText, firstAuthor } from '../../site/assets/js/core/cite.js';
-import { T, statusLabel, issueText } from './i18n.js';
-import { renderDiff, diffLines, diffStats } from './diff.js';
-import { jsonPane } from './monaco.js';
+import { T, statusLabel, issueText, confirmDiscard } from './i18n.js';
+import { jsonCard } from './monaco.js';
 import { field, textInput, markIssues } from './form.js';
-import { isBibId, IdTracker, datasetIdsOf, formProblem, referencesTo, entryLabel, fileName } from './document.js';
+import { Draft, formProblem, referencesTo, entryLabel, fileName } from './document.js';
 import { referencePart } from './reference.js';
 import { dataGrid } from './grid.js';
-import { savePanel } from './save.js';
+import { savePanel, issueList } from './save.js';
 
 const STORE_DELAY_MS = 250;
 // what is detected to measure the lifetime (choices of the LT sub-library)
 const LT_METHODS = ['electron', 'gamma', 'neutron', 'charged particle', 'fission fragment'];
 const REQUIRED_RE = /^'([^']+)' is a required property$/;
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-
 /**
  * Show the editor of `doc` (stored at `path`, or null for a new document) in
  * `container`.  Returns the page handle { flush, destroy } (see main.js).
  */
 export function openEditor(container, { workspace, toast, dialog, navigate }, { path: initialPath, doc: initialDoc }) {
-  let path = initialPath;
-  let doc = null;
+  let draft = new Draft(workspace, initialPath, initialDoc);
   let dirty = false;             // edited since the document was last stored
   let blocked = null;            // why it could not be stored: 'incomplete' | 'shape' | { taken: path }
   let timer = null;
   let tab = 'form';
-  let pane = null;               // the editor of the JSON tab while it is shown
+  let json = null;               // the card of the JSON tab while it is shown (monaco.js)
   let shownAddress = location.hash;
-  let tracker = null;            // follows the entries by datasetId (document.js)
-  let identity = null;           // the tracker's last review: { changes, ambiguous, added, deleted }
   const controls = new Map();    // JSON pointer -> metadata control
 
-  const meta = () => (isObject(doc.meta) ? doc.meta : {});
+  const meta = () => (isObject(draft.doc.meta) ? draft.doc.meta : {});
   const bibId = () => String(meta().bibId || '').trim();
-  const validBibId = (text) => isBibId(text, workspace.db.schemaFor(doc.format));
-  const isNew = () => !path || workspace.baseline(path) === null;
-  const currentText = () => workspace.db.canonicalText(doc);
-  const savedIds = () => datasetIdsOf(path ? workspace.baseline(path) : null);
-  const pendingChanges = () => (identity && !blocked ? identity.changes.filter((c) => !c.choice) : []);
+  const isNew = () => !draft.path || workspace.baseline(draft.path) === null;
+  // the last review of the entries, while the document can be stored: { changes, ambiguous, added, deleted }
+  const review = () => (blocked ? null : draft.review);
+  const pendingChanges = () => (review() ? review().changes.filter((c) => !c.choice) : []);
 
-  const ref = referencePart({ workspace, controls, isBibId: validBibId, markDirty, onTypeChange: renderForm });
+  const ref = referencePart({ workspace, controls, markDirty, onTypeChange: renderForm });
   const grid = dataGrid({ workspace, dialog, markDirty });
-  const panel = savePanel({ workspace }, {
+  const panel = savePanel(workspace, {
     prepare: () => handle.flush(),
+    onChange: () => refreshComputed(),
+    onBusy: (value) => json?.setReadOnly(value),
     // the saved file may hold other people's changes to other entries: show it as saved
-    saved: () => {
+    onSaved: () => {
       clearTimeout(timer);
-      tracker = new IdTracker(doc, savedIds());     // what was just saved is what the entries are compared with
-      identity = null;
-      if (dirty && !store()) { refreshComputed(); return; }   // typed while the save was under way: kept
-      const text = path ? workspace.text(path) : null;
+      if (dirty || pendingChanges().length) { refreshComputed(); return; }
+      const text = draft.path ? workspace.text(draft.path) : null;
       if (text === null) { renderForm(); return; }
-      doc = null;
-      setDoc(jsonfmt.parse(text));
+      draft = new Draft(workspace, draft.path, jsonfmt.parse(text));
+      showDoc();
+      if (json && !json.dirty()) showJson();
     },
-    changed: () => refreshComputed(),
-    own: (p) => p === path || (path !== null && workspace.changes().some((c) => c.path === path && c.origin === p)),
+    current: () => draft.path,
   });
 
   // ---- storing ---------------------------------------------------------------------
   function markDirty() {
     dirty = true;
     clearTimeout(timer);
-    timer = setTimeout(storeNow, STORE_DELAY_MS);
+    if (panel.busy()) storeNow(); else timer = setTimeout(storeNow, STORE_DELAY_MS);
   }
 
   /**
@@ -89,43 +84,24 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
    */
   function store() {
     if (!dirty) return true;
-    if (formProblem(doc)) {
-      blocked = 'shape';
-      return false;
-    }
-    const doi = bibId();
-    if (!validBibId(doi) || expectedMetaId(doc) === null) {
-      blocked = 'incomplete';
-      return false;
-    }
-    assignIds(doc);
-    const twin = workspace.db.sortedFiles().find((f) => f.path !== path && f.meta.id === doc.meta.id);
-    const target = filePath(doc, ref.entry());
-    if (twin || (target !== path && workspace.text(target) !== null)) {
-      blocked = { taken: twin ? twin.path : target };
-      return false;
-    }
-    identity = tracker.review(doc, savedIds(), workspace, path);
-    ref.save(doi);                                  // the bibliography entry first: the file name depends on it
-    workspace.move(path, target, currentText());
-    path = target;
+    blocked = draft.store(ref);
+    if (blocked) return false;
     dirty = false;
-    blocked = null;
     return true;
   }
 
   /** The address follows a renamed file, unless the page is being left for another one. */
   function followAddress() {
     if (location.hash !== shownAddress) return;
-    navigate('edit', { path }, { replace: true });
+    navigate('edit', { path: draft.path }, { replace: true });
     shownAddress = location.hash;
   }
 
   function storeNow() {
     clearTimeout(timer);
-    const before = path;
+    const before = draft.path;
     store();
-    if (path !== before) followAddress();
+    if (draft.path !== before) followAddress();
     refreshComputed();
   }
 
@@ -134,25 +110,27 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     clearTimeout(timer);
     dirty = false;
     blocked = null;
-    identity = null;
-    closePane();
+    closeJson();
   }
 
-  /** Take `obj` as the document (as it is: nothing is added or replaced) and rebuild the form around it. */
-  function setDoc(obj) {
-    if (doc && tracker) tracker.adopt(doc, obj);    // the JSON text was applied: entries are matched by datasetId
-    else tracker = new IdTracker(obj, savedIds());
-    doc = obj;
-    identity = null;                                // until the next store reviews the entries
+  /** Rebuild the form around the document (as it is: nothing is added or replaced). */
+  function showDoc() {
     ref.load(bibId());
     renderForm();
   }
 
+  /** Scroll `el` to the top of the window, clear of the header while it stays on screen (it is taller where it wraps). */
+  function scrollBelowHeader(el) {
+    const header = document.querySelector('.site-header');
+    const covered = header && getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().bottom : 0;
+    window.scrollBy(0, el.getBoundingClientRect().top - Math.max(covered, 0) - 8);
+  }
+
   // ---- identity of the entries --------------------------------------------------------
   const identityEl = h('div');
-  const rowOf = (entry) => doc.data.indexOf(entry) + 1;
+  const rowOf = (entry) => draft.doc.data.indexOf(entry) + 1;
   const statusOf = (entry) => {
-    const change = identity && !blocked ? identity.changes.find((c) => c.entry === entry) : null;
+    const change = review() ? review().changes.find((c) => c.entry === entry) : null;
     return change ? { from: change.from, choice: change.choice } : null;
   };
 
@@ -165,28 +143,26 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
 
   /** Settle identity changes: 'same' (correction of the same entry) or 'different' (different data). */
   function choose(changes, choice) {
-    if (tab === 'json' && pane && pane.dirty()) {
-      if (applyJson()) storeNow();
-      toast(T('JSON タブの編集を反映しました。もう一度選んでください。', 'The edits of the JSON tab were applied. Please choose again.'));
+    if (json && json.dirty()) {
+      if (json.apply()) toast(T('JSON タブの編集を反映しました。もう一度選んでください。', 'The edits of the JSON tab were applied. Please choose again.'));
       return;
     }
-    const touched = new Set();
-    for (const change of changes) for (const p of tracker.choose(change.entry, choice, doc, workspace, path)) touched.add(p);
+    const touched = draft.choose(changes, choice).map(fileName);
     dirty = true;
     storeNow();
     if (tab === 'json') showJson();
-    if (touched.size) {
-      toast(T(`参照を新しい ID に付け替えました: ${[...touched].map(fileName).join('、')}(一緒に保存されます)`,
-        `References now name the new IDs in: ${[...touched].map(fileName).join(', ')} (saved together)`));
+    if (touched.length) {
+      toast(T(`参照を新しい ID に付け替えました: ${touched.join('、')}(一緒に保存されます)`,
+        `References now name the new IDs in: ${touched.join(', ')} (saved together)`));
     }
   }
 
   function renderIdentity() {
-    const changes = identity && !blocked ? identity.changes : [];
-    const ambiguous = identity && !blocked ? identity.ambiguous : [];
-    const deleted = identity && !blocked
-      ? identity.deleted.map((id) => ({ id, refs: referencesTo(workspace.db, [id]) })).filter((d) => d.refs.length) : [];
-    if (!changes.length && !ambiguous.length && !deleted.length) { clear(identityEl); return; }
+    const r = review();
+    const changes = r ? r.changes : [];
+    const ambiguous = r ? r.ambiguous : [];
+    const deleted = r ? r.deleted.map((id) => ({ id, refs: referencesTo(workspace.db, [id]) })).filter((d) => d.refs.length) : [];
+    if (!changes.length && !ambiguous.length && !deleted.length) { replace(identityEl); return; }
     const pending = changes.filter((c) => !c.choice).length;
     const item = (c) => {
       const refs = referencesTo(workspace.db, [c.choice === 'same' ? c.to : c.from]);
@@ -211,9 +187,11 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
           button('different', T('別のデータ', 'Different data')),
           h('span', { class: 'small muted' }, state)));
     };
-    replace(identityEl, h('section', { class: `card identity-card${pending ? ' pending' : ''}` },
-      h('div', { class: 'card-head' }, h('h2', null, T('ID が変わる行', 'Rows whose ID changes')),
-        changes.length ? h('span', { class: `tag ${pending ? 'warn' : 'good'}` }, pending ? T(`未選択 ${pending} 行`, `${pending} to choose`) : T('選択済み', 'all chosen')) : null),
+    replace(identityEl, card({
+      title: T('ID が変わる行', 'Rows whose ID changes'),
+      controls: changes.length ? h('span', { class: `tag ${pending ? 'warn' : 'good'}` }, pending ? T(`未選択 ${pending} 行`, `${pending} to choose`) : T('選択済み', 'all chosen')) : null,
+      class: `identity-card${pending ? ' pending' : ''}`,
+    },
       h('div', { class: 'card-body stack' },
         changes.length ? [
           h('p', null, T('元素・質量数・Key(またはファイルの文献・Key)を変えたため、次の行の datasetId が変わります。行ごとにどちらかを選んでください。選ぶまでは保存できず、このページから移ることもできません(元に戻すと、この表示は消えます)。',
@@ -223,8 +201,8 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
               T(' — 入力の誤りを直しただけで、同じ測定値・計算値です。以前の ID はこの行の legacyIds に残り、この行を「元データ」に挙げているデータ(キュレーション・評価データ)は新しい ID に付け替えられて、一緒に保存されます。',
                 ' — only a mistake was corrected; it is the same measured or calculated value. The former ID stays in the row’s legacyIds, and data naming this row as original data (curated, evaluated) are changed to name the new ID and saved together.')),
             h('li', null, h('strong', null, T('別のデータ', 'Different data')),
-              T(' — 以前の行とは別のデータです。以前の ID(と legacyIds)は残さず、参照も付け替えません。以前の行を参照しているデータはチェックでエラーになるので、そちらを直してください。',
-                ' — it is not the data of the former row. The former ID (and legacyIds) are not kept and references are left as they are; data that refer to the former row are reported by the checks and must be corrected.'))),
+              T(' — 以前の行とは別のデータです。以前の ID、legacyIds、訂正記録は引き継がず、参照も付け替えません。以前の行を参照しているデータはチェックでエラーになるので、そちらを直してください。',
+                ' — it is not the data of the former row. Earlier IDs and correction records stay with the former row. References still name that row. Correct any references flagged by the checks.'))),
           changes.length > 1 ? h('div', { class: 'row' },
             h('button', { class: 'btn small', type: 'button', onclick: () => choose(changes, 'same') }, T('すべて「同じデータの訂正」', 'All: correction of the same data')),
             h('button', { class: 'btn small', type: 'button', onclick: () => choose(changes, 'different') }, T('すべて「別のデータ」', 'All: different data'))) : null,
@@ -241,6 +219,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
 
   // ---- form: conditions -------------------------------------------------------------
   function conditionsCard() {
+    const { doc } = draft;
     const code = fileCode(doc);
     const exp = code === 'EXP';
     const used = workspace.db.sortedFiles().filter((f) => f.code === code).map((f) => f.meta.method).filter(Boolean);
@@ -257,8 +236,8 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
       const facility = h('select', {
         onchange: (e) => { doc.meta.facility = e.target.value; markDirty(); },
       }, h('option', { value: '' }, T('(選択してください)', '(choose)')),
-      tables.facilities.map((f) => h('option', { value: f.abbr, selected: doc.meta.facility === f.abbr }, `${f.abbr} — ${f.detail}`)),
-      doc.meta.facility && !tables.facilityAbbrs.has(doc.meta.facility)
+      [...tables.facilities.values()].map((f) => h('option', { value: f.abbr, selected: doc.meta.facility === f.abbr }, `${f.abbr} — ${f.detail}`)),
+      doc.meta.facility && !tables.facilities.has(doc.meta.facility)
         ? h('option', { value: doc.meta.facility, selected: true }, `${doc.meta.facility} (${T('未登録', 'not in the list')})`) : null);
       controls.set('/meta/facility', facility);
       body = [
@@ -267,7 +246,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
             h('a', { href: '#/master' }, T('マスタデータ', 'Master data')), T('で追加', '')),
         }),
         field(T('測定手法', 'Method'), input('method', { list: listId, placeholder: 'electron' }), {
-          hint: T('何を検出したか: electron / gamma / neutron / charged particle / fission fragment', 'What was detected: electron / gamma / neutron / charged particle / fission fragment'),
+          hint: `${T('何を検出したか', 'What was detected')}: ${LT_METHODS.join(' / ')}`,
         }),
         field(T('ビーム', 'Beam'), input('beam', { area: true }), {
           wide: true, hint: T('ビームライン・運動量・強度など(統一的に書けない項目なので自由記述)', 'Beam line, momentum, intensity … (free text)'),
@@ -286,7 +265,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
       body = [
         field(T('手法', 'Method'), input('method', { list: listId, area: true, rows: 2 }), {
           wide: true,
-          hint: { TH: T('理論模型・計算コード', 'Model or code'), CUR: T('キュレーションの手順(統一した Huff 因子・定数など)', 'Curation procedure (common Huff factor, constants …)'), EVAL: T('評価方法', 'Evaluation method') }[code],
+          hint: { TH: T('理論模型・計算コード', 'Model or code'), CUR: T('キュレーションの手順(使った Huff 因子・定数など)', 'Curation procedure (Huff factors and constants used …)'), EVAL: T('評価方法', 'Evaluation method') }[code],
         }),
         code === 'EVAL' ? field(T('参照データベース', 'Reference database'), input('referenceDatabase', { placeholder: 'muND LT curated v1.0.0' }), {
           wide: true, hint: T('評価の入力に使ったキュレーションデータのセット', 'The set of curated data the evaluation is based on'),
@@ -294,14 +273,15 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
         field(T('コメント', 'Comment'), input('comment', { area: true, rows: 2 }), { wide: true }),
       ];
     }
-    return h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, exp ? T('実験条件', 'Experimental conditions') : T('値の導出方法', 'How the values were obtained'))),
+    return card({ title: exp ? T('実験条件', 'Experimental conditions') : T('値の導出方法', 'How the values were obtained') },
       h('div', { class: 'card-body' }, h('div', { class: 'form-cols' }, body),
         h('datalist', { id: listId }, methods.map((m) => h('option', { value: m })))));
   }
 
   // ---- checks -----------------------------------------------------------------------
-  const issuesEl = h('section', { class: 'card issues-card' });
+  const issuesTag = h('span', { class: 'tag' });
+  const issuesBody = h('div');
+  const issuesEl = card({ title: T('チェック結果', 'Checks'), controls: issuesTag, class: 'issues-card' }, issuesBody);
 
   /** The input that an issue points at (a missing member: the input of that member). */
   function controlFor(issue) {
@@ -315,31 +295,33 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     return null;
   }
 
+  /** Go to the input that an issue points at. */
+  function pick(issue) {
+    const el = controlFor(issue);
+    if (!el) return;
+    setTab('form');
+    el.focus();
+    el.scrollIntoView({ block: 'center' });
+  }
+
   function refreshIssues() {
-    const issues = (path ? workspace.issuesFor(path) : []).map((issue) => ({ ...issue, text: issueText(issue) }));
+    const { path } = draft;
+    const issues = path ? workspace.issuesFor(path) : [];
     const marks = new Map();
-    const items = issues.map((issue) => {
+    for (const issue of issues) {
       const el = controlFor(issue);
-      if (el) marks.set(el, [...(marks.get(el) || []), { level: issue.level, message: issue.text }]);
-      const m = /^\/data\/(\d+)(?:\/(.*))?/.exec(issue.pointer);
-      const where = m ? `${T('行', 'row')} ${Number(m[1]) + 1}${m[2] ? ` · ${m[2].split('/').filter((s) => !/^\d+$/.test(s)).slice(-2).join(' ')}` : ''}`
-        : issue.pointer.replace(/^\//, '').replace(/\//g, ' › ');
-      return h('li', { class: issue.level },
-        h('button', { class: 'link', type: 'button', onclick: () => { if (el) { setTab('form'); el.focus(); el.scrollIntoView({ block: 'center' }); } } },
-          h('span', { class: 'issue-mark' }, issue.level === 'error' ? '✕' : '!'), ' ',
-          where ? h('strong', null, `${where}: `) : null, issue.text),
-        ' ', h('code', { class: 'muted small' }, issue.code));
-    });
+      if (el) marks.set(el, [...(marks.get(el) || []), { level: issue.level, message: issueText(issue, workspace.db) }]);
+    }
     for (const el of [...controls.values(), ...grid.controls()]) markIssues(el, marks.get(el) || []);
     const errors = issues.filter((i) => i.level === 'error').length;
-    replace(issuesEl,
-      h('div', { class: 'card-head' }, h('h2', null, T('チェック結果', 'Checks')),
-        h('span', { class: `tag ${errors ? 'bad' : 'good'}` }, !path ? T('文献 未入力', 'no source yet')
-          : errors ? T(`エラー ${errors} 件`, `${errors} error(s)`)
-            : issues.length ? T(`警告 ${issues.length} 件`, `${issues.length} warning(s)`) : T('問題なし', 'all good'))),
-      items.length ? h('ul', { class: 'issue-list' }, items)
-        : h('div', { class: 'card-body muted small' }, path ? T('スキーマ・ID・参照関係のチェックをすべて通過しています。', 'Format, identifiers and references are all fine.')
-          : T('文献(DOI など)を入力するとチェックが始まります。', 'Checks start once the source (DOI …) is entered.')));
+    issuesTag.className = `tag ${errors ? 'bad' : 'good'}`;
+    issuesTag.textContent = !path ? T('文献 未入力', 'no source yet')
+      : errors ? T(`エラー ${errors} 件`, `${errors} error(s)`)
+        : issues.length ? T(`警告 ${issues.length} 件`, `${issues.length} warning(s)`) : T('問題なし', 'all good');
+    issuesBody.className = issues.length ? '' : 'card-body muted small';
+    replace(issuesBody, issues.length ? issueList(issues, workspace.db, { onPick: pick })
+      : path ? T('スキーマ・ID・参照関係のチェックをすべて通過しています。', 'Format, identifiers and references are all fine.')
+        : T('文献(DOI など)を入力するとチェックが始まります。', 'Checks start once the source (DOI …) is entered.'));
   }
 
   // ---- header -------------------------------------------------------------------------
@@ -366,7 +348,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
   }
 
   function renderNotice() {
-    if (!dirty || !blocked) { clear(noticeEl); return; }
+    if (!dirty || !blocked) { replace(noticeEl); return; }
     const open = typeof blocked === 'object'
       ? h('a', {
         href: `#/edit?path=${encodeURIComponent(blocked.taken)}`,
@@ -375,8 +357,10 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
           if (!confirm(T('ここで入力した内容は失われます。登録済みのファイルを開きますか?',
             'What you typed here will be lost. Open the registered file?'))) return;
           const target = blocked.taken;
-          tracker.undoAll(doc, workspace, path);
+          const abandoned = isNew() ? draft.path : null;
+          draft.undo();
           abandon();
+          if (abandoned) workspace.discard(abandoned);     // a new file is withdrawn, with the entries only it named
           navigate('edit', { path: target });
         },
       }, T('そのファイルを開く', 'Open that file'))
@@ -385,6 +369,7 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
   }
 
   function refreshComputed() {
+    const { doc, path } = draft;
     if (isObject(doc.meta)) ref.refresh(doc);
     const doi = bibId();
     const stored = workspace.db.reference(doi);
@@ -395,8 +380,8 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     statusEl.textContent = statusLabel(state);
     statusEl.className = `tag ${state}`;
     pathEl.textContent = path || T('(文献を入力すると保存先が決まります)', '(enter the source to create the file)');
-    historyEl.hidden = !path;
-    if (path) historyEl.href = `#/history?path=${encodeURIComponent(path)}`;
+    historyEl.hidden = isNew();                              // only a saved file has a history
+    if (!historyEl.hidden) historyEl.href = `#/history?path=${encodeURIComponent(path)}`;
     renderNotice();
     renderIdentity();
     panel.refresh();
@@ -405,13 +390,13 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
   }
 
   // ---- tabs -------------------------------------------------------------------------------
-  const formEl = h('div', { class: 'stack' });
-  const jsonEl = h('div', { class: 'stack', hidden: true });
-  const diffEl = h('div', { class: 'stack', hidden: true });
+  const formEl = h('div', { class: 'stack', id: 'editor-form', role: 'tabpanel', 'aria-labelledby': 'tab-form' });
+  const jsonEl = h('div', { class: 'stack', hidden: true, id: 'editor-json', role: 'tabpanel', 'aria-labelledby': 'tab-json' });
   const tabsEl = h('div', { class: 'tabs', role: 'tablist' });
 
   function renderForm() {
     controls.clear();
+    const { doc } = draft;
     const problem = formProblem(doc);
     if (problem) {
       grid.detach();
@@ -425,88 +410,71 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
     refreshComputed();
   }
 
-  /** Take over the text of the JSON tab. Returns false (and reports) when it is not valid. */
-  function applyJson() {
-    if (!pane || !pane.dirty()) return true;
-    let parsed;
-    try {
-      parsed = jsonfmt.parse(pane.value());
-      if (!isObject(parsed)) throw new Error('the top level must be an object');
-    } catch (err) {
-      toast(T(`JSON として読めません: ${err.message}`, `Not valid JSON: ${err.message}`), 'bad');
-      return false;
-    }
-    setDoc(parsed);
-    dirty = true;
-    return true;
-  }
+  /** Take over the text of the JSON tab, if it is shown. Returns false (and reports) when it is not valid. */
+  const applyJson = () => !json || json.apply();
 
-  function closePane() {
-    if (pane) pane.dispose();
-    pane = null;
-    clear(jsonEl);
+  function closeJson() {
+    if (json) json.dispose();
+    json = null;
+    replace(jsonEl);
   }
 
   function showJson() {
-    closePane();
-    pane = jsonPane(path || `data/${doc.sublibrary}/${fileCode(doc)}/new.json`, currentText(), workspace.schemas);
-    replace(jsonEl, h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, 'JSON'),
-        h('div', { class: 'row' }, pane.note,
-          h('button', { class: 'btn primary', type: 'button', onclick: () => {
-            if (!applyJson()) return;
-            storeNow();
-            toast(T('反映しました(ID と書式を整えました)', 'Applied (identifiers and layout updated)'));
-            showJson();
-          } }, T('反映', 'Apply')))),
-      pane.el,
-      h('div', { class: 'card-body small muted' }, T('ここでの編集は「反映」を押すとフォームに取り込まれます。ID は自動で計算し直され、書式も整えられます。行は datasetId で対応づけるので、並べ替えても ID は変わりません。',
-        'Edits made here are taken over with “Apply”. Identifiers are recomputed and the layout is normalised. Rows are matched by datasetId, so reordering them keeps their identifiers.'))));
-  }
-
-  function showDiff() {
-    const before = path ? workspace.baseline(path) : null;
-    const after = currentText();
-    const stats = diffStats(diffLines(before, after));
-    replace(diffEl, h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, T('保存済みの内容との差分', 'Changes since the last save')),
-        h('span', { class: 'small muted' }, before === null ? T('新規ファイル', 'new file') : `+${stats.added} / −${stats.removed} ${T('行', 'lines')}`)),
-      h('div', { class: 'card-body' }, renderDiff(before, after, 2))));
+    closeJson();
+    json = jsonCard({
+      title: 'JSON',
+      path: draft.path || `data/${draft.doc.sublibrary}/${fileCode(draft.doc)}/new.json`,
+      text: () => draft.text(),
+      schemas: workspace.schemas,
+      toast,
+      onApply: (doc) => {
+        draft.adopt(doc);
+        showDoc();
+        dirty = true;
+        storeNow();
+      },
+      help: T('ここでの編集は「反映」を押すとフォームに取り込まれます。ID は自動で計算し直され、書式も整えられます。行は datasetId で対応づけるので、並べ替えても ID は変わりません。',
+        'Edits made here are taken over with “Apply”. Identifiers are recomputed and the layout is normalised. Rows are matched by datasetId, so reordering them keeps their identifiers.'),
+    });
+    json.setReadOnly(panel.busy());
+    replace(jsonEl, json.el);
   }
 
   function setTab(next) {
     if (next === tab) return;
     if (tab === 'json') {
       if (!applyJson()) return;
-      closePane();
+      closeJson();
     }
     tab = next;
     formEl.hidden = tab !== 'form';
     jsonEl.hidden = tab !== 'json';
-    diffEl.hidden = tab !== 'diff';
     renderTabs();
     if (dirty) storeNow();
     if (tab === 'json') showJson();
-    if (tab === 'diff') showDiff();
   }
 
   function renderTabs() {
-    const item = (key, label) => h('button', { class: 'tab', role: 'tab', type: 'button', 'aria-selected': String(tab === key), onclick: () => setTab(key) }, label);
-    replace(tabsEl, item('form', T('フォーム', 'Form')), item('json', 'JSON'), item('diff', T('差分', 'Changes')));
+    const item = (key, label) => h('button', {
+      class: 'tab', role: 'tab', type: 'button', id: `tab-${key}`, 'aria-controls': `editor-${key}`, 'aria-selected': String(tab === key), onclick: () => setTab(key),
+    }, label);
+    replace(tabsEl, item('form', T('フォーム', 'Form')), item('json', 'JSON'));
   }
 
   // ---- page ------------------------------------------------------------------------------------
   function discard() {
-    if ((path || dirty) && !confirm(T('このファイルの保存していない変更を破棄しますか?', 'Discard the unsaved changes of this file?'))) return;
-    tracker.undoAll(doc, workspace, path);   // references re-pointed for this file go back
+    const { path } = draft;
+    if ((path || dirty) && !confirmDiscard()) return;
+    draft.undo();
     abandon();
     if (path) workspace.discard(path);
     navigate('datasets');
   }
 
   function remove() {
+    const { path } = draft;
     if (path && !confirm(T(`${path} を削除しますか? 削除は、次の画面で「保存」を押すと確定します。`, `Delete ${path}? The deletion takes effect when you press “Save” on the next page.`))) return;
-    tracker.undoAll(doc, workspace, path);
+    draft.undo();
     abandon();
     if (path) {
       workspace.stageDelete(path);
@@ -526,9 +494,9 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
       historyEl,
       h('button', { class: 'btn', type: 'button', onclick: discard }, T('変更を破棄', 'Discard changes')),
       h('button', { class: 'btn danger', type: 'button', onclick: remove }, T('削除', 'Delete'))),
-    noticeEl, panel.el, identityEl, tabsEl, formEl, jsonEl, diffEl, issuesEl);
+    noticeEl, identityEl, panel.el, tabsEl, formEl, jsonEl, issuesEl);
   renderTabs();
-  setDoc(initialDoc);
+  showDoc();
   if (isNew() && !bibId()) {
     const doi = controls.get('/meta/bibId');
     if (doi) doi.focus();
@@ -542,19 +510,19 @@ export function openEditor(container, { workspace, toast, dialog, navigate }, { 
      */
     flush() {
       clearTimeout(timer);
-      if (tab === 'json' && !applyJson()) return false;
-      const before = path;
+      if (!applyJson()) return false;
+      const before = draft.path;
       if (!store()) {
         refreshComputed();
         toast(blockedMessage(), 'bad');
         return false;
       }
-      if (path !== before) followAddress();
+      if (draft.path !== before) followAddress();
       if (pendingChanges().length) {
         refreshComputed();
         toast(T('ID が変わる行があります。行ごとに「同じデータの訂正」か「別のデータ」を選んでください。',
           'The ID of some rows changes. Choose “Correction of the same data” or “Different data” for each.'), 'bad');
-        identityEl.scrollIntoView({ block: 'start' });
+        scrollBelowHeader(identityEl);
         return false;
       }
       return true;

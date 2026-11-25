@@ -1,25 +1,28 @@
-"""Conversion between lifetime, capture rate and capture probability.
+"""Conversion between lifetime, capture rate and capture probability
+(twin of ``site/assets/js/core/convert.js``; shared cases: ``tests/vectors/convert.json``).
 
     1 / tau_total = Lambda_cap + Q / tau_mu+
-    P_cap         = Lambda_cap / (Lambda_cap + Q / tau_mu+)
+    Bcap          = Lambda_cap / (Lambda_cap + Q / tau_mu+)
 
 ``Q`` is the Huff factor (reduction of the decay rate of the bound muon) and
 ``tau_mu+`` the lifetime of the free positive muon.  Both come from
 ``data/master``.  Uncertainties are propagated to first order; the
 uncertainty of Q and of tau_mu+ is neglected.
 
-Internal units: lifetime in ns, capture rate in 1/us, probability as fraction.
-The JavaScript twin is ``site/assets/js/core/convert.js``.
+Internal units: lifetime in ns, capture rate in 1/us, probability in %.
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, Optional, Tuple
+
+from .jsonfmt import as_dict, is_number, objects
 
 # factor that converts a value in the given unit into the internal unit
 UNIT_FACTORS = {
     "lifetime": {"ns": 1.0, "us": 1.0e3},
     "capture_rate": {"us-1": 1.0, "ms-1": 1.0e-3, "s-1": 1.0e-6},
-    "capture_probability": {"%": 1.0e-2},
+    "capture_probability": {"%": 1.0},
 }
 
 
@@ -28,27 +31,32 @@ def combined_uncertainty(uncertainties) -> Optional[float]:
 
     The entry with source ``total`` if there is one, otherwise the sum in
     quadrature of the listed components (statistical, systematic, other);
-    ``None`` when the source gives no uncertainty.
+    ``None`` when absent or outside the finite numeric range.
     """
-    entries = [u for u in (uncertainties or []) if isinstance(u, dict)
-               and isinstance(u.get("value"), (int, float)) and not isinstance(u.get("value"), bool)]
+    entries = [u for u in objects(uncertainties) if is_number(u.get("value"))]
     for u in entries:
         if u.get("source") == "total":
             return float(u["value"])
     if not entries:
         return None
-    return sum(float(u["value"]) ** 2 for u in entries) ** 0.5
+    total = math.hypot(*(u["value"] for u in entries))
+    return total if math.isfinite(total) else None
+
+
+def _is_finite(x) -> bool:
+    return is_number(x) and math.isfinite(x)
 
 
 def is_huff_factor(q) -> bool:
     """Whether q can be a Huff factor: a finite number with 0 < q <= 1 (as in the master table)."""
-    return isinstance(q, (int, float)) and not isinstance(q, bool) and 0 < q <= 1
+    return _is_finite(q) and 0 < q <= 1
 
 
 class Physics:
     """Huff factors and constants from the master tables.
 
-    Tables with a key listed twice, or without a usable mu_plus_lifetime, are refused.
+    Huff factors listed twice or outside (0, 1], and a mu_plus_lifetime that is not
+    positive, are refused.
     """
 
     def __init__(self, huff: dict, constants: dict):
@@ -68,103 +76,85 @@ class Physics:
             if not is_huff_factor(r["q"]):
                 raise ValueError("the Huff factor of Z=%d is not in (0, 1]" % z)
             self.by_element[z] = float(r["q"])
-        found = [c for c in constants.get("constants", []) if c.get("name") == "mu_plus_lifetime"]
-        if not found:
-            raise ValueError("constant mu_plus_lifetime is missing")
-        if len(found) > 1:
-            raise ValueError("constant mu_plus_lifetime is listed twice")
-        if found[0].get("unit") != "ns":
-            raise ValueError("constant mu_plus_lifetime must be given in ns, not %s" % found[0].get("unit"))
-        value = found[0].get("value")
-        if not (isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0):
-            raise ValueError("constant mu_plus_lifetime must be positive")
+        value = as_dict(constants.get("mu_plus_lifetime")).get("value")
+        if not (is_number(value) and value > 0):
+            raise ValueError("mu_plus_lifetime must be a positive number of ns")
         self.mu_life_ns = float(value)
 
-    def huff_factor(self, z: int, a: Optional[int] = None) -> float:
-        """Q for the nuclide, else the element average, else 1."""
-        if a:
-            q = self.by_nuclide.get((int(z), int(a)))
-            if q is not None:
-                return q
-        return self.by_element.get(int(z), 1.0)
-
-    def huff_source(self, z: int, a: Optional[int] = None) -> str:
-        """Where the Huff factor came from: 'nuclide' (tabulated for the isotope), 'element'
-        (element value: natural targets and isotopes not tabulated) or 'none' (Q = 1 assumed)."""
+    def huff(self, z: int, a: Optional[int]) -> Tuple[float, str]:
+        """(Q, source): the value tabulated for the nuclide ('nuclide'), else the element value
+        ('element': natural targets and isotopes not tabulated), else 1 ('none')."""
         if a and (int(z), int(a)) in self.by_nuclide:
-            return "nuclide"
-        return "element" if int(z) in self.by_element else "none"
+            return self.by_nuclide[(int(z), int(a))], "nuclide"
+        if int(z) in self.by_element:
+            return self.by_element[int(z)], "element"
+        return 1.0, "none"
 
-    def decay_rate(self, z: int, a: Optional[int] = None, q: Optional[float] = None) -> float:
-        """Bound-muon decay rate Q / tau_mu+ in 1/us."""
-        return (self.huff_factor(z, a) if q is None else q) / (self.mu_life_ns / 1000.0)
-
-    # -- elementary conversions (internal units) ---------------------------
-    def life_to_rate(self, z, a, life, dlife=0.0, q=None):
-        if life <= 0:
-            return None
-        tau = life / 1000.0
-        return 1.0 / tau - self.decay_rate(z, a, q), (dlife / 1000.0) / tau ** 2
-
-    def rate_to_life(self, z, a, rate, drate=0.0, q=None):
-        total = rate + self.decay_rate(z, a, q)
-        if total <= 0:
-            return None
-        return 1000.0 / total, 1000.0 * drate / total ** 2
-
-    def rate_to_prob(self, z, a, rate, drate=0.0, q=None):
-        free = self.decay_rate(z, a, q)
-        total = rate + free
-        if total <= 0:
-            return None
-        return rate / total, free / total ** 2 * drate
-
-    def prob_to_rate(self, z, a, prob, dprob=0.0, q=None):
-        free = self.decay_rate(z, a, q)
-        denom = 1.0 - prob
-        if denom <= 0:
-            return None
-        return free * prob / denom, free / denom ** 2 * dprob
-
-    # -- all three representations of one data point -----------------------
     def convert(self, z: int, a: int, observable: str, value: float,
                 uncertainty: Optional[float], unit: str, q: Optional[float] = None) -> Optional[dict]:
-        """Return lifetime (ns), capture rate (1/us) and probability (%).
-
-        ``None`` when the value cannot be converted.  Uncertainties are
-        ``None`` when the source has none.  ``q`` overrides the Huff factor;
-        a value that cannot be a Huff factor is refused, not replaced.
+        """Lifetime (ns), capture rate (1/us) and capture probability (%) of one
+        data entry; ``None`` when it cannot be converted (unknown unit, value not a
+        finite number, uncertainty negative or not a finite number).  Uncertainties
+        are ``None`` when the source has none.  ``q`` overrides the Huff factor; a
+        value that cannot be a Huff factor (see is_huff_factor) is refused, not replaced.
         """
         if q is not None and not is_huff_factor(q):
             raise ValueError("a Huff factor must be a number in (0, 1]")
-        try:
-            factor = UNIT_FACTORS[observable][unit]
-        except KeyError:
-            return None
+        factor = UNIT_FACTORS.get(observable, {}).get(unit)
         has_unc = uncertainty is not None
-        v = float(value) * factor
-        dv = float(uncertainty) * factor if has_unc else 0.0
+        if factor is None or not _is_finite(value) or (has_unc and not (_is_finite(uncertainty) and uncertainty >= 0)):
+            return None
+        huff, source = self.huff(z, a) if q is None else (q, "given")
+        v = value * factor
+        dv = uncertainty * factor if has_unc else 0.0
+        free = (1000.0 * huff) / self.mu_life_ns
+        if not (math.isfinite(v) and math.isfinite(free) and free > 0) or (v == 0 and value != 0):
+            return None
+
+        dlife = drate = dprob = None
         if observable == "lifetime":
-            life = (v, dv)
-            rate = self.life_to_rate(z, a, v, dv, q)
+            if v <= 0:
+                return None
+            life = v
+            total = 1000.0 / life
+            rate = total - free
+            prob = 100.0 * (rate / total)
+            if has_unc:
+                dlife, drate, dprob = dv, (dv / life) * total, (free / 10.0) * dv
         elif observable == "capture_rate":
-            rate = (v, dv)
-            life = self.rate_to_life(z, a, v, dv, q)
+            rate = v
+            total = rate + free
+            if total <= 0 or not math.isfinite(total):
+                return None
+            life = 1000.0 / total
+            prob = 100.0 * (rate / total)
+            if has_unc:
+                relative = dv / total
+                dlife, drate, dprob = life * relative, dv, (100.0 * (free / total)) * relative
         else:
-            rate = self.prob_to_rate(z, a, v, dv, q)
-            life = self.rate_to_life(z, a, rate[0], rate[1], q) if rate else None
-        if rate is None or life is None:
+            prob = v
+            remaining = 100.0 - prob
+            if prob < 0 or remaining <= 0:
+                return None
+            rate = free * (prob / remaining)
+            life = 10.0 * remaining / free
+            if has_unc:
+                dlife = (dv / free) * 10.0
+                drate = (free / remaining) * (100.0 / remaining) * dv
+                dprob = dv
+
+        if not all(math.isfinite(x) for x in (life, rate, prob)):
             return None
-        prob = (v, dv) if observable == "capture_probability" else self.rate_to_prob(z, a, rate[0], rate[1], q)
-        if prob is None:
+        if has_unc and not all(math.isfinite(x) and (x > 0 or uncertainty == 0) for x in (dlife, drate, dprob)):
             return None
 
-        def pair(p, scale=1.0):
-            return p[0] * scale, (p[1] * scale if has_unc else None)
-
-        out = {"huff_factor": self.huff_factor(z, a) if q is None else q,
-               "huff_source": self.huff_source(z, a) if q is None else "given"}
-        out["lifetime_ns"], out["lifetime_ns_unc"] = pair(life)
-        out["capture_rate_us-1"], out["capture_rate_us-1_unc"] = pair(rate)
-        out["capture_probability_pct"], out["capture_probability_pct_unc"] = pair(prob, 100.0)
-        return out
+        return {
+            "huff_factor": huff,
+            "huff_source": source,
+            "lifetime_ns": life,
+            "lifetime_ns_unc": dlife,
+            "capture_rate_us-1": rate,
+            "capture_rate_us-1_unc": drate,
+            "capture_probability_pct": prob,
+            "capture_probability_pct_unc": dprob,
+        }

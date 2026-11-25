@@ -1,40 +1,35 @@
 // The データ (data) card of the editor: one row per data entry.
 //
-// The columns are described once (columns()): header cell, row cell and which
-// problems found by the checks (JSON pointers below /data/<i>/) are shown at
-// the column's input.  An entry the grid cannot edit (document.js,
+// The columns are described once (columns()): name (the header text, and with
+// the row number the accessible name of the row's input), header cell when it
+// differs from the name, row cell and which problems found by the checks (JSON
+// pointers below /data/<i>/) are shown at the column's input.  An entry the grid cannot edit (document.js,
 // gridProblem) is shown as it is, to be corrected in the JSON tab.
 
-import { h, replace, clear, nuclideNode } from '../../site/assets/js/core/dom.js';
+import { h, replace, nuclideNode, card as domCard } from '../../site/assets/js/core/dom.js';
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
+import { isObject } from '../../site/assets/js/core/jsonfmt.js';
 import * as ids from '../../site/assets/js/core/ids.js';
 import { fileCode, quantity, entryHash } from '../../site/assets/js/core/database.js';
 import { citeLabel } from '../../site/assets/js/core/cite.js';
-import { OBSERVABLES, OBSERVABLE_LABELS, UNIT_LABELS, combinedUncertainty } from '../../site/assets/js/core/convert.js';
-import { formatDerived, formatQuantity } from '../../site/assets/js/core/format.js';
+import { UNIT_LABELS, unitLabel, combinedUncertainty } from '../../site/assets/js/core/convert.js';
+import { formatDerived, formatConverted, quantityText } from '../../site/assets/js/core/format.js';
 import { effectiveMass } from '../../site/assets/js/core/nuclides.js';
-import { T } from './i18n.js';
+import { T, kindTitle } from './i18n.js';
 import { withHint } from './form.js';
 import {
-  newEntry, setKind, numberText, setNumberField, uncertaintyText, setUncertainty, gridProblem, unitChoices,
-  entryLabel, entryLookup, parseOriginalData, pickOriginalData, confirmOriginal, fileName,
+  newEntry, setKind, numberText, setNumberField, uncertaintyText, setUncertainty, uncertaintiesOf, gridProblem,
+  kindChoices, unitChoices, entryLabel, entryLookup, parseOriginalData, pickOriginalData, confirmOriginal, fileName, parsePastedRows,
 } from './document.js';
-import { parsePastedRows } from './paste.js';
 
 const UNCERTAINTY_RE = /^observable\/[^/]+\/uncertainties(?:\/(\d+))?/;
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const editable = (row) => gridProblem(row) === null;
-const uncertaintiesOf = (block) => (Array.isArray(block.uncertainties) ? block.uncertainties : []);
 const originalItems = (row) => (Array.isArray(row.originalData) ? row.originalData : []);
 const originalText = (row) => originalItems(row).map((item) => (isObject(item) ? String(item.datasetId) : String(item))).join(', ');
 
 /** A value block as text with its unit: '1065.5 ± 2.0 ns'. */
-function blockText(block) {
-  if (!block) return '—';
-  const value = typeof block.value === 'number' ? formatQuantity(block).text : String(block.value);
-  return `${value} ${UNIT_LABELS[block.unit] || block.unit || ''}`.trim();
-}
+const blockText = (block) => (block ? quantityText(block) : '—');
 
 /**
  * workspace    the Workspace (tables, other files, conversion)
@@ -84,6 +79,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         const copy = jsonfmt.clone(view.row);
         delete copy.datasetId;
         delete copy.legacyIds;
+        delete copy.corrections;
         doc.data.splice(i + 1, 0, copy);
         renderRows();
         markDirty();
@@ -103,7 +99,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         cell: (view, i) => h('td', { class: 'num muted small' }, String(i + 1)),
       },
       {
-        key: 'element', head: () => h('th', null, T('元素', 'Element')),
+        key: 'element', name: T('元素', 'Element'),
         pointer: (rest) => rest === 'nuclide' || rest.startsWith('nuclide/element'),
         cell: (view) => {
           const { nuclide } = view.row;
@@ -114,7 +110,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         },
       },
       {
-        key: 'mass', head: () => h('th', { title: T('0 = 天然同位体比', '0 = natural abundance') }, 'A'),
+        key: 'mass', name: T('質量数', 'Mass number'), head: () => h('th', { title: T('0 = 天然同位体比', '0 = natural abundance') }, 'A'),
         pointer: (rest) => rest.startsWith('nuclide/mass'),
         cell: (view) => {
           const { nuclide } = view.row;
@@ -127,7 +123,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         },
       },
       show.isomer && {
-        key: 'isomer', head: () => h('th', { title: T('アイソマー (0 = 基底状態)', 'Isomer (0 = ground state)') }, 'm'),
+        key: 'isomer', name: T('アイソマー', 'Isomer'), head: () => h('th', { title: T('アイソマー (0 = 基底状態)', 'Isomer (0 = ground state)') }, 'm'),
         pointer: (rest) => rest.startsWith('nuclide/isomer'),
         cell: (view) => {
           const { nuclide } = view.row;
@@ -139,39 +135,43 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         },
       },
       {
-        key: 'kind', head: () => h('th', null, T('物理量', 'Quantity')),
+        key: 'kind', name: T('物理量', 'Quantity'),
         pointer: (rest) => rest === 'observable' || rest === 'observable/kind',
         cell: (view) => {
-          const el = h('select', { class: 'c-obs' }, OBSERVABLES.map((o) => h('option', { value: o, selected: view.row.observable.kind === o }, OBSERVABLE_LABELS[o])));
-          el.addEventListener('change', () => { setKind(view.row, el.value); fillUnits(view); refreshRow(view); markDirty(); });
+          const el = h('select', { class: 'c-obs' });
+          const fill = () => replace(el, kindChoices(code(), view.row.observable.kind).map((o) =>
+            h('option', { value: o, selected: view.row.observable.kind === o }, kindTitle(o))));
+          fill();
+          el.addEventListener('change', () => { setKind(view.row, el.value); fill(); fillUnits(view); refreshRow(view); markDirty(); });
           view.cells.kind = el;
           return h('td', null, el);
         },
       },
       {
-        key: 'value', head: () => h('th', null, T('値', 'Value')),
+        key: 'value', name: T('値', 'Value'),
         pointer: (rest) => /^observable\/[^/]+(\/value)?$/.test(rest),
         cell: (view) => h('td', null, bind(view, 'value', h('input', { type: 'text', class: 'c-num', inputmode: 'decimal', value: numberText(quantity(view.row), 'value') }),
           (v) => setNumberField(quantity(view.row), 'value', v))),
       },
       {
         key: 'total',
+        name: show.parts ? T('全体の不確かさ', 'Total uncertainty') : T('不確かさ', 'Uncertainty'),
         head: () => h('th', { title: T('全体の不確かさ(1σ)', 'Overall uncertainty (1σ)') }, show.parts ? T('± 全体', '± total') : T('± 不確かさ', '± Uncertainty')),
         pointer: (rest, row) => { const s = uncertaintySource(rest, row); return s !== null && !separate(s); },
         cell: uncertaintyCell('total', T('なし', 'none')),
       },
       show.parts && {
-        key: 'statistical', head: () => h('th', null, T('± 統計', '± stat.')),
+        key: 'statistical', name: T('統計誤差', 'Statistical uncertainty'), head: () => h('th', null, T('± 統計', '± stat.')),
         pointer: (rest, row) => uncertaintySource(rest, row) === 'statistical',
         cell: uncertaintyCell('statistical', 'stat'),
       },
       show.parts && {
-        key: 'systematic', head: () => h('th', null, T('± 系統', '± syst.')),
+        key: 'systematic', name: T('系統誤差', 'Systematic uncertainty'), head: () => h('th', null, T('± 系統', '± syst.')),
         pointer: (rest, row) => uncertaintySource(rest, row) === 'systematic',
         cell: uncertaintyCell('systematic', 'syst'),
       },
       {
-        key: 'unit', head: () => h('th', null, T('単位', 'Unit')),
+        key: 'unit', name: T('単位', 'Unit'),
         pointer: (rest) => /^observable\/[^/]+\/unit/.test(rest),
         cell: (view) => {
           const el = h('select', { class: 'c-unit' });
@@ -182,19 +182,19 @@ export function dataGrid({ workspace, dialog, markDirty }) {
         },
       },
       {
-        key: 'key', head: () => h('th', { title: T('同じ核種の行を区別する短い名前', 'Short label separating rows of one nuclide') }, 'Key'),
+        key: 'key', name: 'Key', head: () => h('th', { title: T('同じ核種の行を区別する短い名前', 'Short label separating rows of one nuclide') }, 'Key'),
         pointer: (rest) => rest.startsWith('key') || rest === 'datasetId',
         cell: (view) => h('td', null, bind(view, 'key', h('input', { type: 'text', class: 'c-key', value: view.row.key || '', spellcheck: 'false' }),
           (v) => { view.row.key = v; })),
       },
       {
-        key: 'comment', head: () => h('th', null, T('コメント', 'Comment')),
+        key: 'comment', name: T('コメント', 'Comment'),
         pointer: (rest) => rest.startsWith('comment'),
         cell: (view) => h('td', null, bind(view, 'comment', h('input', { type: 'text', class: 'c-comment', value: view.row.comment || '' }),
           (v) => { view.row.comment = v; })),
       },
       withOriginal && {
-        key: 'original', head: () => h('th', null, T('元データ', 'Original data')),
+        key: 'original', name: T('元データ', 'Original data'),
         pointer: (rest) => rest.startsWith('originalData'),
         cell: (view) => {
           const { row } = view;
@@ -246,7 +246,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
     if (!view.originalNote) return;
     const notes = [];
     for (const item of originalItems(view.row)) {
-      const target = isObject(item) && typeof item.datasetId === 'string' ? lookup.resolve(item.datasetId) : null;
+      const target = lookup.of(item);
       if (!target) continue;
       if (typeof item.entryHash === 'string' && item.entryHash !== entryHash(target.entry)) {
         notes.push(h('button', {
@@ -300,7 +300,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
       && quantity(r.entry) && typeof r.entry.datasetId === 'string');
     const offered = candidates.map((r) => r.entry.datasetId);
     const about = (item) => {
-      const t = isObject(item) && typeof item.datasetId === 'string' ? lookup.resolve(item.datasetId) : null;
+      const t = lookup.of(item);
       return t ? t.current : null;
     };
     const selected = new Set(originalItems(row).map(about).filter((id) => id !== null && offered.includes(id)));
@@ -355,6 +355,7 @@ export function dataGrid({ workspace, dialog, markDirty }) {
     const a = effectiveMass(z, row.nuclide.mass, db().tables().monoisotopic);
     const rate = conv['capture_rate_us-1'];
     const sigma = conv['capture_rate_us-1_unc'] || 0;
+    const rateUnit = unitLabel('capture_rate');
     let low;
     let high;
     let text;
@@ -363,18 +364,18 @@ export function dataGrid({ workspace, dialog, markDirty }) {
       const margin = 5 * Math.hypot(sigma, exact.unc);
       low = exact.rate - margin;
       high = exact.rate + margin;
-      text = `EVAL ${formatDerived(exact.rate, exact.unc).text} µs⁻¹`;
+      text = `EVAL ${formatDerived(exact.rate, exact.unc)} ${rateUnit}`;
     } else if (a === 0) {
       low = Math.min(...refs.map((r) => r.rate));
       high = Math.max(...refs.map((r) => r.rate));
-      text = `EVAL ${formatDerived(low, null).text}–${formatDerived(high, null).text} µs⁻¹ (${T('同位体', 'isotopes')})`;
+      text = `EVAL ${formatDerived(low, null)}–${formatDerived(high, null)} ${rateUnit} (${T('同位体', 'isotopes')})`;
       low -= 5 * sigma;
       high += 5 * sigma;
     } else {
       return null;
     }
     const ok = rate >= low * 0.75 && rate <= high * 1.25;
-    return { ok, text: `${T('この行', 'this row')}: ${formatDerived(rate, sigma || null).text} µs⁻¹ / ${text}` };
+    return { ok, text: `${T('この行', 'this row')}: ${formatDerived(rate, sigma || null)} ${rateUnit} / ${text}` };
   }
 
   /** The datasetId of a row, marked when its identifiers changed (the editor asks what the change means). */
@@ -400,13 +401,8 @@ export function dataGrid({ workspace, dialog, markDirty }) {
       ? physics.convert(z, typeof row.nuclide.mass === 'number' ? row.nuclide.mass : 0, row.observable.kind, block.value,
         combinedUncertainty(list), block.unit)
       : null;
-    if (conv) {
-      view.conv.textContent = row.observable.kind === 'lifetime'
-        ? `${formatDerived(conv['capture_rate_us-1'], conv['capture_rate_us-1_unc']).text} µs⁻¹`
-        : `${formatDerived(conv.lifetime_ns, conv.lifetime_ns_unc).text} ns`;
-    } else {
-      view.conv.textContent = '';
-    }
+    const other = row.observable.kind === 'lifetime' ? 'capture_rate' : 'lifetime';
+    view.conv.textContent = conv ? `${formatConverted(conv, other)} ${unitLabel(other)}` : '';
     const p = plausibility(row, conv);
     replace(view.check, p ? h('span', { class: p.ok ? 'ok' : 'warnmark', title: p.text }, p.ok ? '✓' : T('⚠ 要確認', '⚠ check')) : '');
     showId(view);
@@ -436,13 +432,19 @@ export function dataGrid({ workspace, dialog, markDirty }) {
     if (rows.some((r) => uncertaintiesOf(quantity(r)).some((u) => u && u.source !== 'total'))) show.parts = true;
     if (rows.some((r) => r.nuclide.isomer !== 0)) show.isomer = true;
     cols = columns();
-    replace(head, h('tr', null, cols.map((c) => c.head())));
+    replace(head, h('tr', null, cols.map((c) => (c.head ? c.head() : h('th', null, c.name)))));
     buildEvalIndex();
     lookup = entryLookup(db());
-    clear(body);
+    replace(body);
     views = doc.data.map((row, i) => {
       const view = { row, cells: {}, problem: gridProblem(row) };
       view.tr = view.problem ? problemRow(view, i) : h('tr', null, cols.map((c) => c.cell(view, i)));
+      if (!view.problem) {
+        for (const c of cols) {
+          const el = view.cells[c.key];
+          if (el && c.name) el.setAttribute('aria-label', T(`${i + 1} 行目: ${c.name}`, `Row ${i + 1}: ${c.name}`));
+        }
+      }
       body.appendChild(view.tr);
       refreshRow(view);
       return view;
@@ -456,13 +458,14 @@ export function dataGrid({ workspace, dialog, markDirty }) {
     const last = lastEditable();
     doc.data.push(newEntry(last ? last.nuclide.element : '', 0, defaults.kind, defaults.unit));
     renderRows();
+    markDirty();
     const { element } = views[views.length - 1].cells;
     element.focus();
     element.select();
   }
 
   function pasteDialog() {
-    const area = h('textarea', { rows: 10, spellcheck: 'false', placeholder: 'Si\t28\t743.9\t5.0\nSi\t29\t794.2\t3.5\nnatSi\t751.6\t1.0\tplate' });
+    const area = h('textarea', { rows: 10, spellcheck: 'false', 'aria-label': T('貼り付ける行', 'Rows to paste'), placeholder: 'Si\t28\t743.9\t5.0\nSi\t29\t794.2\t3.5\nnatSi\t751.6\t1.0\tplate' });
     const info = h('p', { class: 'small muted' });
     area.addEventListener('input', () => {
       const { rows, skipped } = parsePastedRows(area.value, db().tables().elements);
@@ -504,15 +507,16 @@ export function dataGrid({ workspace, dialog, markDirty }) {
   /** The card for `currentDoc` (a document whose data is a list, see document.js). */
   function card(currentDoc) {
     doc = currentDoc;
-    const obs = h('select', null, OBSERVABLES.map((o) => h('option', { value: o }, OBSERVABLE_LABELS[o])));
-    const unit = h('select');
+    const kinds = kindChoices(code());
+    const obs = h('select', { 'aria-label': T('新しい行の物理量', 'Quantity of new rows') }, kinds.map((o) => h('option', { value: o }, kindTitle(o))));
+    const unit = h('select', { 'aria-label': T('新しい行の単位', 'Unit of new rows') });
     const fill = () => {
       const units = unitChoices(defaults.kind).filter(Boolean);
       if (!units.includes(defaults.unit)) defaults.unit = units[0];
       replace(unit, units.map((u) => h('option', { value: u, selected: defaults.unit === u }, UNIT_LABELS[u])));
     };
     const last = lastEditable();
-    if (last) {
+    if (last && kinds.includes(last.observable.kind)) {
       defaults.kind = last.observable.kind;
       defaults.unit = quantity(last).unit;
     } else if (code() === 'CUR' || code() === 'EVAL') {
@@ -526,24 +530,24 @@ export function dataGrid({ workspace, dialog, markDirty }) {
     renderRows();
     const toggle = (key, label) => {
       const box = h('input', { type: 'checkbox', checked: show[key] });
-      box.addEventListener('change', () => { show[key] = box.checked; renderRows(); });
+      box.addEventListener('change', () => { show[key] = box.checked; renderRows(); box.checked = show[key]; });
       return h('label', { class: 'check small' }, box, label);
     };
-    return h('section', { class: 'card' },
-      h('div', { class: 'card-head' },
-        h('h2', null, T('データ ', 'Data entries '), count),
-        h('div', { class: 'row' },
-          toggle('parts', T('統計・系統誤差を分けて入力', 'Separate statistical / systematic')),
-          toggle('isomer', T('アイソマー', 'Isomers')),
-          h('span', { class: 'small muted' }, T('新しい行の既定値', 'Defaults for new rows')), obs, unit,
-          h('button', { class: 'btn', type: 'button', onclick: addRow }, T('+ 行を追加', '+ Add row')),
-          h('button', { class: 'btn', type: 'button', onclick: pasteDialog }, T('貼り付け…', 'Paste …')),
-          h('button', { class: 'btn ghost', type: 'button', onclick: sortRows, title: T('Z・A の順に並べ替え', 'Sort by Z and A') }, T('並べ替え', 'Sort')))),
+    return domCard({
+      title: h('h2', null, T('データ ', 'Data entries '), count),
+      controls: h('div', { class: 'row' },
+        toggle('parts', T('統計・系統誤差を分けて入力', 'Separate statistical / systematic')),
+        toggle('isomer', T('アイソマー', 'Isomers')),
+        h('span', { class: 'small muted' }, T('新しい行の既定値', 'Defaults for new rows')), obs, unit,
+        h('button', { class: 'btn', type: 'button', onclick: addRow }, T('+ 行を追加', '+ Add row')),
+        h('button', { class: 'btn', type: 'button', onclick: pasteDialog }, T('貼り付け…', 'Paste …')),
+        h('button', { class: 'btn ghost', type: 'button', onclick: sortRows, title: T('Z・A の順に並べ替え', 'Sort by Z and A') }, T('並べ替え', 'Sort'))),
+    },
       h('div', { class: 'table-wrap grid-wrap' }, h('table', { class: 'data grid' }, head, body)),
       h('datalist', { id: 'element-list' }, db().tables().elements.map((e) => h('option', { value: e }))),
       h('div', { class: 'card-body small muted' },
-        T('値と不確かさは論文に書かれた桁のまま入力してください(例: 13.250)。A = 0 は天然同位体比の標的です。論文が統計誤差と系統誤差を分けている場合は分けて入力します(換算値には二乗和を使います)。実験データには論文に最も近い物理量を1つだけ入力し、キュレーション・評価データは捕獲率に統一します。',
-          'Type value and uncertainty with the digits given in the paper (e.g. 13.250). A = 0 means a target of natural abundance. If the paper separates statistical and systematic uncertainties, enter them separately (converted values use their sum in quadrature). Experimental entries hold the one quantity closest to the publication; curated and evaluated entries are given as capture rates.')));
+        T('値と不確かさは論文に書かれた桁のまま入力してください(例: 13.250)。A = 0 は天然同位体比の標的です。論文が統計誤差と系統誤差を分けている場合は分けて入力します。「± 全体」に値があれば換算にはその値を使います。空欄なら各成分の二乗和の平方根を使います。実験データには論文に最も近い物理量を1つだけ入力し、キュレーション・評価データは捕獲率に統一します。',
+          'Type value and uncertainty with the digits given in the paper (e.g. 13.250). A = 0 means a target of natural abundance. If the paper separates statistical and systematic uncertainties, enter them separately. Conversions use “± total” when given. If it is blank, they use the square root of the sum of the squared components. Experimental entries hold the one quantity closest to the publication; curated and evaluated entries are given as capture rates.')));
   }
 
   return {

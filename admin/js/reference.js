@@ -1,23 +1,24 @@
 // The 文献 (reference) card of the editor: kind of data, the source (bibId: DOI:<DOI>;
 // without a DOI NSR:<keynumber>; found in neither muND:<name>), key, related
 // sources, and the bibliography entry of the source (data/master/bibliography.json),
-// which is edited here and stored with save().
+// which is edited here and stored with save().  An entry no file names any more
+// is removed by the workspace (workspace.js).
 
-import { h, replace } from '../../site/assets/js/core/dom.js';
+import { h, replace, externalLink, card as domCard } from '../../site/assets/js/core/dom.js';
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
 import * as ids from '../../site/assets/js/core/ids.js';
-import { CODES, CODE_TITLES, TYPE_OF } from '../../site/assets/js/core/vocabulary.js';
+import { CODES, TYPE_OF } from '../../site/assets/js/core/vocabulary.js';
 import { expectedMetaId, fileCode } from '../../site/assets/js/core/database.js';
-import { bibKind, bibName, bibUrl, asciiLabel, firstAuthor, referenceYear } from '../../site/assets/js/core/cite.js';
-import { T } from './i18n.js';
+import { bibKind, bibName, bibUrl, isBibId, asciiLabel, firstAuthor, referenceYear } from '../../site/assets/js/core/cite.js';
+import { T, codeTitle } from './i18n.js';
 import { field, textInput } from './form.js';
 import { setDatasetType, sourceText } from './document.js';
 import { lookupDoi } from './crossref.js';
 
 const REFERENCE_TYPES = ['journal-article', 'proceedings-article', 'report', 'dissertation', 'book-chapter', 'posted-content'];
 
-/** How a source is named (the reference card and the extraction page). */
-export const SOURCE_HINT = () => T('DOI:10.1103/… の形。DOI がなければ NSR のキー番号を NSR:1987SU06 の形で、どちらもなければ「DOI なし…」で muND:名前。DOI・doi.org のアドレス・キー番号だけを入れても前置きが付きます',
+/** How a source is named. */
+const SOURCE_HINT = () => T('DOI:10.1103/… の形。DOI がなければ NSR のキー番号を NSR:1987SU06 の形で、どちらもなければ「DOI なし…」で muND:名前。DOI・doi.org のアドレス・キー番号だけを入れても前置きが付きます',
   'DOI:10.1103/…; without a DOI, the NSR keynumber as NSR:1987SU06; found in neither, muND:<name> (“No DOI …”). A bare DOI, doi.org address or keynumber gets its prefix.');
 
 function authorsToText(authors) {
@@ -36,16 +37,19 @@ function textToAuthors(text) {
 /**
  * workspace     the Workspace (bibliography look-ups, storing the entry)
  * controls      Map JSON pointer -> control, filled with the metadata controls of the card
- * isBibId(text) whether text is a valid bibId
  * markDirty()   called after every edit
  * onTypeChange()  called after the datasetType changed (the rest of the form depends on it)
  */
-export function referencePart({ workspace, controls, isBibId, markDirty, onTypeChange }) {
+export function referencePart({ workspace, controls, markDirty, onTypeChange }) {
   let reference = { id: '' };         // the bibliography entry shown and edited
   let edited = false;                 // it differs from what the bibliography holds
+  let follows = false;                // that entry was staged while its source was still being typed: it moves with the source
   let fieldsEl = null;
   const metaIdEl = h('code', { class: 'computed' });
   const metaSourceEl = h('span', { class: 'muted small mono' });
+  const bibNotice = h('p', { class: 'notice bad', role: 'alert', hidden: true },
+    T('文献データベース data/master/bibliography.json に誤りがあるため、書誌情報を保持できません。マスタデータの「ファイルを直接編集」で直してください。',
+      'The bibliography (data/master/bibliography.json) has errors. To keep these bibliographic fields, correct the file under Master data → Edit files directly.'));
   const lookupStatus = h('span', { class: 'small muted', role: 'status' });
 
   /** Show the bibliography entry of `bibId` (an empty one when there is none). */
@@ -53,15 +57,35 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
     const found = workspace.db.reference(bibId);
     reference = found ? jsonfmt.clone(found) : { id: bibId };
     edited = false;
+    follows = false;
+    bibNotice.hidden = true;
   }
 
-  /** Stage the entry under `bibId` when it was edited. */
+  /**
+   * The entry that belongs to the source `bibId`; the card turns to it.  Data typed and not
+   * stored yet belong to it, and so does an entry staged while the source was still being
+   * typed, unless the source has an entry of its own.  Otherwise it is the source's entry in
+   * the bibliography (an empty one when there is none).
+   */
+  function entryFor(bibId) {
+    if (!edited && ids.normalizeBibId(reference.id || '') !== ids.normalizeBibId(bibId)) {
+      if (follows && !workspace.db.reference(bibId)) edited = true;
+      else load(bibId);
+    }
+    return reference;
+  }
+
+  /** Stage the entry of `bibId` (entryFor) when it was edited. */
   function save(bibId) {
-    if (!edited || !isBibId(bibId)) return;
+    if (!isBibId(bibId)) return;
+    entryFor(bibId);
+    if (!edited) return;
+    const { id, ...rest } = reference;
+    bibNotice.hidden = workspace.setReference(jsonfmt.clone({ id: bibId, ...rest }));
+    if (!bibNotice.hidden) return;
+    follows = ids.normalizeBibId(id || '') !== ids.normalizeBibId(bibId);
     edited = false;
-    delete reference.id;
-    reference = { id: bibId, ...reference };
-    workspace.setReference(jsonfmt.clone(reference));
+    reference.id = bibId;
   }
 
   function edit() {
@@ -91,10 +115,10 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
     });
     const year = h('input', { type: 'text', inputmode: 'numeric', placeholder: '1987' });
     year.value = referenceYear(reference) || '';
+    const parts = reference.published && reference.published['date-parts'];
+    const rest = Array.isArray(parts) && Array.isArray(parts[0]) ? parts[0].slice(1) : [];
     year.addEventListener('input', () => {
       const v = year.value.trim();
-      const parts = reference.published && reference.published['date-parts'];
-      const rest = Array.isArray(parts) && Array.isArray(parts[0]) ? parts[0].slice(1) : [];
       if (/^\d{4}$/.test(v)) reference.published = { 'date-parts': [[Number(v), ...rest]] };
       else delete reference.published;
       edit();
@@ -123,7 +147,7 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
       if (!isBibId(source)) { lookupStatus.textContent = SOURCE_HINT(); return; }
       if (bibKind(source) === 'NSR') {
         replace(lookupStatus, T('NSR のページで書誌情報を確かめ、手入力してください: ', 'Check the bibliographic data on its NSR page and type them: '),
-          h('a', { href: bibUrl(source), target: '_blank', rel: 'noopener' }, source));
+          externalLink(bibUrl(source), source));
         return;
       }
       if (bibKind(source) === 'muND') {
@@ -131,16 +155,17 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
         return;
       }
       lookupStatus.textContent = T('検索中…', 'Looking up …');
+      const current = () => lookupStatus.isConnected && ids.normalizeBibId(bibId()) === ids.normalizeBibId(source);
       try {
         const found = await lookupDoi(bibName(source));
-        if (!lookupStatus.isConnected) return;          // the editor was left meanwhile
+        if (!current()) return;
         if (!found) { lookupStatus.textContent = T('見つかりませんでした', 'Not found'); return; }
         reference = found.reference;
         renderFields();
         lookupStatus.textContent = T(`${found.source} から取得しました。内容を確認してください。`, `Filled from ${found.source}. Please check.`);
         edit();
       } catch (err) {
-        if (!lookupStatus.isConnected) return;
+        if (!current()) return;
         lookupStatus.textContent = T(`取得できませんでした (${err.message})。手入力してください。`,
           `Lookup failed (${err.message}). Please type the data.`);
       }
@@ -166,13 +191,14 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
         markDirty();
         onTypeChange();
       },
-    }, CODES.map((c) => h('option', { value: c, selected: fileCode(doc) === c }, `${c} – ${CODE_TITLES[c]} (${TYPE_OF[c]})`)));
+    }, CODES.map((c) => h('option', { value: c, selected: fileCode(doc) === c }, `${c} – ${codeTitle(c)} (${TYPE_OF[c]})`)));
     controls.set('/datasetType', dataset);
 
     const doi = textInput(doc.meta, 'bibId', markDirty, { placeholder: 'DOI:10.1103/PhysRevC.35.2212' });
     doi.addEventListener('change', () => {
+      lookupStatus.textContent = '';
       doi.value = doc.meta.bibId = sourceText(doi.value);
-      if (!edited) load(doc.meta.bibId);               // the bibliography entry of the new source, if there is one
+      entryFor(doc.meta.bibId);
       renderFields();
       markDirty();
     });
@@ -191,9 +217,10 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
 
     fieldsEl = h('div', { class: 'form-cols' });
     renderFields();
-    return h('section', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, T('文献', 'Reference')),
-        h('span', { class: 'muted small' }, T('1論文 = 1ファイル。データは下の表に入力します。', 'One publication = one file. Data entries go into the table below.'))),
+    return domCard({
+      title: T('文献', 'Reference'),
+      controls: h('span', { class: 'muted small' }, T('1ファイルに1件のメタデータを記録します。この測定条件のデータは下の表に入力します。', 'Each file holds one metadata record. Enter the data for this set-up in the table below.')),
+    },
       h('div', { class: 'card-body' },
         h('div', { class: 'form-cols' },
           field(T('データ種別 (datasetType)', 'Kind of data (datasetType)'), dataset, {
@@ -208,6 +235,7 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
             hint: T('1つの論文に測定条件の異なるメタデータを複数作る場合だけ使います', 'Only when one publication needs several metadata records (e.g. two set-ups)'),
           }),
           field(T('関連する文献(arXiv・訂正・データ等の DOI)', 'Related sources (DOIs of arXiv, erratum, data …)'), related)),
+        bibNotice,
         h('p', { class: 'computed-line' }, 'MetaID ', metaIdEl, ' ', metaSourceEl),
         h('details', { open: isNew || !firstAuthor(reference) },
           h('summary', null, T('書誌情報(文献データベース bibliography.json に記録されます)', 'Bibliographic data (kept in bibliography.json)')), fieldsEl)));
@@ -224,8 +252,7 @@ export function referencePart({ workspace, controls, isBibId, markDirty, onTypeC
   return {
     load,
     save,
-    /** The entry the bibliography holds for the source once saved. */
-    entry: () => reference,
+    entryFor,
     card,
     refresh,
   };

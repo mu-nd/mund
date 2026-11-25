@@ -1,21 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 
-from helpers import FIXTURE, ROOT, vectors
-from mundlib import schema as schema_mod
-from mundlib.cite import cite_text, file_label
-from mundlib.database import Database, assign_ids, canonical_text, file_path
-
-
-class RepositoryDataTests(unittest.TestCase):
-    """The real data: only what must always hold."""
-
-    def test_no_errors(self):
-        errors = [str(i) for i in Database.load(ROOT).validate() if i.level == "error"]
-        self.assertEqual(errors, [])
-
-    def test_schema_and_nuclide_table_list_the_same_elements(self):
-        db = Database.load(ROOT)
-        self.assertEqual(schema_mod.schema_for("muND/LT/1")["$defs"]["element"]["enum"], db.tables()["elements"])
+from helpers import FIXTURE, vectors
+from mundlib.database import Database, assign_ids, file_path, fix_files
 
 
 class FixtureTests(unittest.TestCase):
@@ -46,13 +34,32 @@ class SharedVectorTests(unittest.TestCase):
             want = sorted((e["level"], e["code"], e["file"], e["pointer"]) for e in case["expect"])
             self.assertEqual(got, want, case["name"])
 
-    def test_citations(self):
-        for c in vectors("cite.json")["cases"]:
-            self.assertEqual(file_label(c["meta"], c["reference"]), c["fileLabel"], c)
-            self.assertEqual(cite_text(c["reference"], c["meta"]["bibId"]), c["citeText"], c)
-
 
 class FileTests(unittest.TestCase):
+    def test_crlf_file_is_not_canonical(self):
+        rel = "data/master/constants.json"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / rel
+            path.parent.mkdir(parents=True)
+            path.write_bytes((FIXTURE / rel).read_bytes().replace(b"\n", b"\r\n"))
+            issues = Database.load(tmp).validate()
+            self.assertEqual([i.code for i in issues if i.file == rel], ["E_CANONICAL"])
+
+    def test_fix_refuses_wrong_document_and_data_shapes(self):
+        rel = "data/LT/EXP/test.json"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / rel
+            path.parent.mkdir(parents=True)
+            for text, reason in [("null", "the top level is not an object"),
+                                 ('{"format":"muND/LT/1","sublibrary":"LT","datasetType":"experiment",'
+                                  '"meta":{"bibId":"muND:test"},"data":1}',
+                                  "data must be an array")]:
+                with self.subTest(text=text):
+                    path.write_text(text, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, rel + ": " + reason):
+                        fix_files(tmp)
+                    self.assertEqual(path.read_text(encoding="utf-8"), text)
+
     def test_assign_ids(self):
         obj = {"format": "muND/LT/1", "sublibrary": "LT", "datasetType": "experiment",
                "meta": {"bibId": "DOI:10.1103/vl7z-rzp8"},
@@ -62,27 +69,6 @@ class FileTests(unittest.TestCase):
         self.assertEqual(obj["meta"]["id"], "4d2ed5c83736")
         self.assertEqual(obj["data"][0]["datasetId"], "dd91adba8444")
         self.assertNotIn("datasetId", obj["data"][1], "an entry without element and mass is left to validation")
-
-    def test_canonical_text(self):
-        obj = {"data": [{"comment": " ", "key": "", "zzz": 1,
-                         "observable": {"lifetime": {"uncertainties": [], "unit": "ns", "value": 1}, "kind": "lifetime"},
-                         "nuclide": {"isomer": 0, "mass": 0, "element": " Si "}, "datasetId": "x"}],
-               "meta": {"comment": "", "bibId": "DOI:10.1234/x", "id": "m", "relatedBibIds": []},
-               "datasetType": "experiment", "sublibrary": "LT", "format": "muND/LT/1"}
-        self.assertEqual(canonical_text(obj), (
-            '{\n'
-            '  "format": "muND/LT/1",\n'
-            '  "sublibrary": "LT",\n'
-            '  "datasetType": "experiment",\n'
-            '  "meta": {\n'
-            '    "id": "m",\n'
-            '    "bibId": "DOI:10.1234/x"\n'
-            '  },\n'
-            '  "data": [\n'
-            '    {"datasetId": "x", "nuclide": {"element": "Si", "mass": 0, "isomer": 0}, "observable": '
-            '{"kind": "lifetime", "lifetime": {"value": 1, "unit": "ns", "uncertainties": []}}, "zzz": 1}\n'
-            '  ]\n'
-            '}\n'))
 
 
 if __name__ == "__main__":

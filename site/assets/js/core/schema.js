@@ -1,28 +1,42 @@
-// A small JSON Schema validator and the schema-driven normalisation.
+// JSON Schema validation and schema-driven normalisation
+// (twin of tools/mundlib/schema.py; shared cases: tests/vectors/cases.json).
 //
-// It implements exactly the keywords used by schema/v1/*.schema.json, and
-// throws on any other one:
-//   $ref (local), type, const, enum, required, properties, additionalProperties: false,
-//   items, pattern, minLength, minimum, maximum, exclusiveMinimum, minItems, uniqueItems,
-//   allOf, if / then / else, not
-// The automatic checks validate the same files with the reference
-// implementation (Python `jsonschema`); tests/vectors/cases.json keeps the two
-// in agreement.
+// Python validates with the reference implementation (jsonschema); in a pattern, a final $
+// matches only at the end of the string, as in JavaScript. JavaScript implements
+// exactly the keywords used by schema/v1/*.schema.json (SUPPORTED); before validating, it
+// throws on any other keyword anywhere in the schema, on constraints next to $ref and on an
+// additionalProperties that is not true or false.
 
-import { getLexeme, setLexeme } from './jsonfmt.js';
+import { copyLexemes, isObject, stringify } from './jsonfmt.js';
+
+// file "format" -> schema file in schema/v1
+export const SCHEMA_FILES = {
+  'muND/LT/1': 'lt.schema.json',
+  'muND/facilities/1': 'facilities.schema.json',
+  'muND/bibliography/1': 'bibliography.schema.json',
+  'muND/nuclides/1': 'nuclides.schema.json',
+  'muND/huff-factors/1': 'huff-factors.schema.json',
+  'muND/constants/2': 'constants.schema.json',
+};
+
+/** The schema of a file format from `schemas` (schema file name -> schema), or null. */
+export function schemaFor(format, schemas) {
+  const name = typeof format === 'string' && Object.hasOwn(SCHEMA_FILES, format) ? SCHEMA_FILES[format] : null;
+  return (name && schemas[name]) || null;
+}
 
 const SUPPORTED = new Set([
-  '$schema', '$id', '$defs', '$ref', '$comment', 'title', 'description', 'default', 'examples',
+  '$schema', '$id', '$defs', '$ref', 'title', 'description',
   'type', 'const', 'enum', 'required', 'properties', 'additionalProperties', 'items', 'pattern',
   'minLength', 'minimum', 'maximum', 'exclusiveMinimum', 'minItems', 'uniqueItems',
   'allOf', 'if', 'then', 'else', 'not',
 ]);
 
-export function pointer(path) {
+function pointer(path) {
   return path.map((p) => '/' + String(p).replace(/~/g, '~0').replace(/\//g, '~1')).join('');
 }
 
-export function resolve(schema, root) {
+function resolve(schema, root) {
   let s = schema;
   while (s && typeof s === 'object' && typeof s.$ref === 'string') {
     if (!s.$ref.startsWith('#/')) throw new Error(`only local $ref is supported: ${s.$ref}`);
@@ -48,14 +62,10 @@ function matchesType(value, type) {
 const show = (v) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
 
 function check(value, schemaIn, root, path, errors) {
-  // keywords next to $ref (description ...) are annotations in our schemas
+  // only title and description stand next to $ref (see assertSupported)
   const schema = resolve(schemaIn, root);
   const at = pointer(path);
   const add = (keyword, message) => errors.push({ pointer: at, keyword, message });
-
-  for (const keyword of Object.keys(schema)) {
-    if (!SUPPORTED.has(keyword)) throw new Error(`schema keyword not supported: ${keyword}`);
-  }
 
   if ('type' in schema) {
     const types = Array.isArray(schema.type) ? schema.type : [schema.type];
@@ -104,18 +114,20 @@ function check(value, schemaIn, root, path, errors) {
     }
   } else if (value !== null && typeof value === 'object') {
     for (const name of schema.required || []) {
-      if (!Object.prototype.hasOwnProperty.call(value, name)) {
+      if (!Object.hasOwn(value, name)) {
         add('required', `'${name}' is a required property`);
       }
     }
     const props = schema.properties || {};
+    const extra = [];
     for (const key of Object.keys(value)) {
-      if (Object.prototype.hasOwnProperty.call(props, key)) {
+      if (Object.hasOwn(props, key)) {
         check(value[key], props[key], root, path.concat(key), errors);
       } else if (schema.additionalProperties === false) {
-        add('additionalProperties', `unknown property '${key}'`);
+        extra.push(key);
       }
     }
+    if (extra.length) add('additionalProperties', `unknown properties: ${extra.map(show).join(', ')}`);
   }
 
   for (const sub of schema.allOf || []) check(value, sub, root, path, errors);
@@ -132,8 +144,34 @@ function check(value, schemaIn, root, path, errors) {
   }
 }
 
+// Every node of a schema is checked once, before any data is validated against it,
+// so that a keyword or form this validator does not implement fails at once.
+const checked = new WeakSet();
+
+function assertSupported(node, at) {
+  if (!isObject(node)) throw new Error(`schema at ${at} must be an object`);
+  for (const keyword of Object.keys(node)) {
+    if (!SUPPORTED.has(keyword)) throw new Error(`schema keyword not supported: ${keyword} (at ${at})`);
+  }
+  if ('$ref' in node && Object.keys(node).some((k) => k !== '$ref' && k !== 'title' && k !== 'description')) {
+    throw new Error(`only title and description may stand next to $ref (at ${at})`);
+  }
+  if ('additionalProperties' in node && typeof node.additionalProperties !== 'boolean') {
+    throw new Error(`additionalProperties must be true or false (at ${at})`);
+  }
+  for (const key of ['properties', '$defs']) {
+    for (const [name, sub] of Object.entries(node[key] || {})) assertSupported(sub, `${at}/${key}/${name}`);
+  }
+  for (const key of ['items', 'if', 'then', 'else', 'not']) if (key in node) assertSupported(node[key], `${at}/${key}`);
+  (node.allOf || []).forEach((sub, i) => assertSupported(sub, `${at}/allOf/${i}`));
+}
+
 /** Validate; returns [{pointer, keyword, message}] sorted by location. */
 export function validate(instance, schema) {
+  if (!checked.has(schema)) {
+    assertSupported(schema, '#');
+    checked.add(schema);
+  }
   const errors = [];
   check(instance, schema, schema, [], errors);
   const seen = new Set();
@@ -156,35 +194,41 @@ const isEmpty = (v) => v === null || v === undefined || v === ''
  * (twin of mundlib.schema.normalize).  Returns a new value; the written form
  * of numbers is carried over.
  */
-export function normalize(value, schemaIn, rootIn) {
+function normalize(value, schemaIn, rootIn, literal = false) {
   const root = rootIn || schemaIn;
   const resolved = schemaIn && typeof schemaIn === 'object' ? resolve(schemaIn, root) : {};
   const schema = resolved && typeof resolved === 'object' ? resolved : {};
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'string') return literal ? value : value.trim();
   if (Array.isArray(value)) {
     const items = schema.items && typeof schema.items === 'object' ? schema.items : {};
-    const out = value.map((v) => normalize(v, items, root));
-    value.forEach((v, i) => {
-      const lex = getLexeme(value, i);
-      if (lex !== undefined) setLexeme(out, i, lex);
-    });
+    const out = value.map((v) => normalize(v, items, root, literal));
+    copyLexemes(value, out, value.keys());
     return out;
   }
   if (value !== null && typeof value === 'object') {
     const props = schema.properties || {};
     const required = new Set(schema.required || []);
-    const known = Object.keys(props).filter((k) => Object.prototype.hasOwnProperty.call(value, k));
-    const unknown = Object.keys(value).filter((k) => !Object.prototype.hasOwnProperty.call(props, k)).sort();
-    const out = {};
+    const known = Object.keys(props).filter((k) => Object.hasOwn(value, k));
+    const unknown = Object.keys(value).filter((k) => !Object.hasOwn(props, k)).sort();
+    const out = Object.create(null);
+    const correction = schema === root?.$defs?.correction;
     for (const key of known.concat(unknown)) {
-      const sub = props[key] && typeof props[key] === 'object' ? props[key] : {};
-      const v = normalize(value[key], sub, root);
-      if (isEmpty(v) && !required.has(key)) continue;
+      const sub = Object.hasOwn(props, key) ? props[key] : {};
+      const v = normalize(value[key], sub, root, literal || (correction && (key === 'before' || key === 'after')));
+      if (!literal && isEmpty(v) && !required.has(key)) continue;
       out[key] = v;
-      const lex = getLexeme(value, key);
-      if (lex !== undefined) setLexeme(out, key, lex);
     }
+    copyLexemes(value, out, Object.keys(out));
     return out;
   }
   return value;
+}
+
+/**
+ * Canonical text of a file's content: members in schema order, empty optional
+ * members dropped, canonical layout.
+ */
+export function canonicalText(obj, schemas) {
+  const schema = isObject(obj) ? schemaFor(obj.format, schemas) : null;
+  return stringify(schema ? normalize(obj, schema) : obj);
 }

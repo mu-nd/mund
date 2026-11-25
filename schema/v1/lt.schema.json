@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ribf.riken.jp/muon/schema/v1/lt.schema.json",
   "title": "muND LT dataset file",
-  "description": "One file of the LT sub-library (lifetimes of muonic atoms / nuclear capture rates). A file holds one metadata record - one publication, optionally split by a key - and all data entries that refer to it. The member names datasetId, datasetType, nuclide, observable, uncertainties and bibId follow the JSON Schema drafted for muND by S. Kawase (github.com/shkawase/mund). The order of the properties below is the canonical key order of the files.",
+  "description": "One file of the LT sub-library (lifetimes of muonic atoms / nuclear capture rates). A file holds one metadata record - one publication, optionally split by a key - and all data entries that refer to it. The order of the properties below is the canonical key order of the files.",
   "type": "object",
   "properties": {
     "format": {"const": "muND/LT/1", "description": "Format identifier of this file."},
-    "sublibrary": {"const": "LT", "description": "Sub-library: XR, LT, ES or BR. This schema covers LT."},
+    "sublibrary": {"const": "LT", "description": "Sub-library (this schema: LT)."},
     "datasetType": {
       "enum": ["experiment", "theory", "curated", "evaluated"],
       "description": "experiment: data as published (directory EXP). theory: theoretical calculation (TH). curated: experimental data re-analysed on a common footing, traced back to experiment (CUR). evaluated: recommended data (EVAL)."
@@ -68,12 +68,12 @@
     },
     "bibId": {
       "type": "string",
-      "pattern": "^(DOI:10\\.[0-9]{4,9}/[^\\s;]+|NSR:[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}|muND:[A-Za-z0-9][A-Za-z0-9._-]*)$",
-      "description": "A source: its DOI as DOI:<DOI>; without a DOI, its keynumber in Nuclear Science References as NSR:<keynumber>; found in neither, a muND key muND:<name>."
+      "pattern": "^(DOI:10\\.[0-9]{4,9}/[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff;|]+|NSR:[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}|muND:[A-Za-z0-9][A-Za-z0-9._-]*)$",
+      "description": "A bibId (docs/id-definition.md §4)."
     },
     "key": {
       "type": "string",
-      "pattern": "^[^\\s|]([^|]*[^\\s|])?$",
+      "pattern": "^[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff|]([^|]*[^\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff|])?$",
       "description": "Short label that distinguishes entries which would otherwise get the same ID. Compared case-insensitively. Must not contain '|'."
     },
     "text": {"type": "string", "minLength": 1},
@@ -85,7 +85,7 @@
           "$ref": "#/$defs/id",
           "description": "MetaID, derived from datasetType, bibId and key. Data entries refer to their metadata by this identifier."
         },
-        "bibId": {"$ref": "#/$defs/bibId", "description": "Main reference: its DOI, NSR keynumber or muND key. Part of the MetaID."},
+        "bibId": {"$ref": "#/$defs/bibId", "description": "Main reference. Part of the MetaID."},
         "key": {
           "$ref": "#/$defs/key",
           "description": "Optional. Separates several metadata records of the same publication (e.g. two different set-ups). Part of the MetaID."
@@ -112,7 +112,7 @@
         "detector": {"$ref": "#/$defs/text", "description": "experiment only. Detector set-up: a short summary written for this database from the source, not a quotation (free text)."},
         "software": {
           "$ref": "#/$defs/text",
-          "description": "theory, curated and evaluated only. Program and version that produced the values (e.g. a code name with its version or commit)."
+          "description": "theory, curated and evaluated only. Program and version that produced the values (e.g. a code name with its version or revision)."
         },
         "referenceDatabase": {
           "$ref": "#/$defs/text",
@@ -167,7 +167,7 @@
     "originalData": {
       "type": "object",
       "properties": {
-        "datasetId": {"$ref": "#/$defs/id", "description": "datasetId of the original entry."},
+        "datasetId": {"$ref": "#/$defs/text", "description": "Current datasetId or a legacyIds member of the original entry."},
         "entryHash": {
           "type": "string",
           "pattern": "^[0-9a-f]{12}$",

@@ -2,19 +2,26 @@
 // quantities, where it comes from, experimental conditions, reference,
 // identifiers and how to cite it.
 
-import { h, replace, nuclideNode, externalLink } from '../core/dom.js';
+import { h, replace, nuclideNode, externalLink, stateLink } from '../core/dom.js';
 import * as jsonfmt from '../core/jsonfmt.js';
-import { siteUrl } from '../core/site.js';
+import { siteUrl } from './site.js';
 import { citeLabel, citeText, authorList, sourceUrl, referenceTitle } from '../core/cite.js';
-import { formatQuantity, formatDerived } from '../core/format.js';
-import { QUANTITIES, UNIT_LABELS } from '../core/convert.js';
+import { quantityText, formatQuantity, formatUncertainty, formatConverted, formatHuffFactor, formatCorrection } from '../core/format.js';
+import { OBSERVABLES, KINDS, UNIT_LABELS, unitLabel, HUFF_SOURCE_TEXT } from '../core/convert.js';
 import { CODE_TITLES } from '../core/vocabulary.js';
+import { icon } from './icons.js';
 import { citeBoxes } from './citebox.js';
 
-const QUANTITY_NAMES = Object.keys(QUANTITIES);
-const unitText = (name) => UNIT_LABELS[QUANTITIES[name].unit];
-const derived = (row, name) => (row.conv
-  ? formatDerived(row.conv[QUANTITIES[name].key], row.conv[`${QUANTITIES[name].key}_unc`]).text : '');
+/** Qualifier for a natural target displayed under its effective isotope. */
+export function naturalTargetNote(row) {
+  return row.entry.nuclide.mass === 0 && row.a
+    ? h('span', { class: 'muted small', title: 'Target of natural abundance' }, ' nat') : null;
+}
+
+/** A small warning tag in a note (`title` explains it where no notice does). */
+export const noteTag = (label, title) => h('span', { class: 'tag warn', title }, label);
+/** The tag on a value whose original data changed after it was derived from them. */
+export const changedTag = (title) => noteTag('changed', title);
 
 /**
  * Show the entry `id` in the panel `el` (an <aside class="detail">), or close
@@ -24,15 +31,13 @@ const derived = (row, name) => (row.conv
  * @param link         (datasetId) => address of the page showing that entry
  * @param select       (datasetId) => void: show another entry ('' closes the panel)
  * @param permalinkOf  (row) => absolute address of the entry, with the version
- * @param extra        optional (row) => nodes shown below the reference (links of the page)
- * @returns the row shown, or null
  */
-export function renderDetail(el, { version, config, id, link, select, permalinkOf, extra = null }) {
+export function renderDetail(el, { version, config, id, link, select, permalinkOf }) {
   const { tables } = version;
   const row = id ? version.byId.get(id) : null;
   document.body.classList.toggle('has-detail', Boolean(row));
   el.hidden = !row;
-  if (!row) { replace(el); return null; }
+  if (!row) { replace(el); return; }
 
   const { entry, meta, reference, block, conv } = row;
   const unit = UNIT_LABELS[block.unit];
@@ -41,11 +46,11 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
   const idLink = (target, changed = false) => {
     const found = version.byId.get(target);
     return h('li', null,
-      h('a', { href: link(target), onclick: (e) => { e.preventDefault(); select(target); } }, h('code', null, target)),
-      found ? [' ', nuclideNode(found.entry.nuclide.element, found.a),
-        ` ${formatQuantity(found.block).text} ${UNIT_LABELS[found.block.unit]}`,
+      stateLink({ href: link(target) }, () => select(target), h('code', null, target)),
+      found ? [' ', nuclideNode(found.entry.nuclide.element, found.a), naturalTargetNote(found),
+        ` ${quantityText(found.block)}`,
         ` · ${citeLabel(found.reference, found.entry.bibId)}`] : ' (not in this version)',
-      changed ? [' ', h('span', { class: 'changed' }, 'changed after this value was derived from it; to be checked again')] : null);
+      changed ? [' ', changedTag()] : null);
   };
   const bibLink = (bibId, reference = null) => {
     const url = sourceUrl(bibId, reference);
@@ -54,39 +59,38 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
   const usedBy = version.usedBy.get(entry.datasetId) || [];
   const changedOriginals = row.originals.filter((o) => o.changed).length;
   const facility = tables.facilities.get(meta.facility);
-  const huffSource = conv ? { nuclide: 'value for this nuclide', element: 'element average',
-    none: 'no tabulated value: Q = 1 assumed', given: 'given' }[conv.huff_source] : '';
-  const separate = block.uncertainties.some((u) => u.source !== 'total');
+  const componentsOnly = block.uncertainties.length && block.uncertainties.every((u) => u.source !== 'total');
   const notes = block.uncertainties.filter((u) => u.description);
   const entryLink = permalinkOf(row);
 
   replace(el,
     h('div', { class: 'detail-head' },
-      h('h2', null, nuclideNode(entry.nuclide.element, row.a), ` · ${CODE_TITLES[row.code]}`),
-      h('button', { class: 'btn small ghost', 'aria-label': 'Close details', onclick: () => select('') }, '✕')),
+      h('h2', { tabindex: '-1' }, nuclideNode(entry.nuclide.element, row.a), naturalTargetNote(row), ` · ${CODE_TITLES[row.code]}`),
+      h('button', { class: 'icon-button', type: 'button', 'aria-label': 'Close details', onclick: () => select('') }, icon('x'))),
     h('div', { class: 'detail-body' },
       h('h3', null, 'Value'),
       kv([
-        ['Given in the source', h('strong', null, `${QUANTITIES[entry.observable.kind].label}: ${formatQuantity(block).text} ${unit}`)],
-        row.unc === null ? ['Uncertainty', 'not given in the source'] : null,
-        separate && row.unc !== null ? ['Combined uncertainty', `± ${formatDerived(block.value, row.unc).uncertainty} ${unit}`
-          + (block.uncertainties.some((u) => u.source === 'total') ? '' : ' (components added in quadrature)')] : null,
+        ['Given in the source', h('strong', null, `${OBSERVABLES[entry.observable.kind].label}: ${quantityText(block)}`)],
+        !block.uncertainties.length ? ['Uncertainty', 'not given in the source'] : null,
+        componentsOnly && row.unc !== null
+          ? ['Combined uncertainty', `± ${formatUncertainty(row.unc)} ${unit} (components added in quadrature)`] : null,
         notes.length ? ['Uncertainty notes', notes.map((u) => `${u.source}: ${u.description}`).join('; ')] : null,
-        block.huffFactor !== undefined ? ['Huff factor used in the source', String(block.huffFactor)] : null,
-        entry.nuclide.mass === 0 ? ['Target', 'natural isotopic abundance'] : null,
+        block.huffFactor !== undefined ? ['Huff factor used in the source', jsonfmt.numberText(block, 'huffFactor')] : null,
         entry.nuclide.isomer ? ['Isomer', String(entry.nuclide.isomer)] : null,
         ['Key', entry.key],
-        ['Comment', entry.comment],
+        ['Note', entry.comment],
       ]),
+      (entry.corrections || []).length ? [h('h3', null, 'Corrections'),
+        h('ul', { class: 'small' }, entry.corrections.map((c) => h('li', null, formatCorrection(c))))] : null,
       h('h3', null, 'Converted'),
       conv ? kv([
         // the quantity given in the source is under Value already (unless it was given in another unit)
-        ...QUANTITY_NAMES.filter((name) => name !== entry.observable.kind || block.unit !== QUANTITIES[name].unit)
-          .map((name) => [QUANTITIES[name].label, `${derived(row, name)} ${unitText(name)}`]),
-        ['Huff factor Q', `${conv.huff_factor} (${huffSource})`],
+        ...KINDS.filter((kind) => kind !== entry.observable.kind || block.unit !== OBSERVABLES[kind].unit)
+          .map((kind) => [OBSERVABLES[kind].label, `${kind === entry.observable.kind ? formatQuantity(block, row.unitScale) : formatConverted(conv, kind)} ${unitLabel(kind)}`]),
+        ['Huff factor Q', `${formatHuffFactor(conv.huff_factor)} — ${HUFF_SOURCE_TEXT[conv.huff_source]}`],
       ]) : h('p', { class: 'muted' }, 'This value cannot be converted.'),
       row.originals.length ? [h('h3', null, 'Derived from'),
-        changedOriginals ? h('p', { class: 'notice warn changed-notice' }, changedOriginals === 1
+        changedOriginals ? h('p', { class: 'notice warn small' }, changedOriginals === 1
           ? 'One of the entries this value was derived from has changed since. This value is to be checked again.'
           : `${changedOriginals} of the entries this value was derived from have changed since. This value is to be checked again.`) : null,
         h('ul', { class: 'id-list' }, row.originals.map((o) => idLink(o.id, o.changed)))] : null,
@@ -104,7 +108,6 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
         ['Source', bibLink(entry.bibId, reference)],
         meta.relatedBibIds ? ['Related', h('span', null, meta.relatedBibIds.map((d, i) => [i ? ', ' : '', bibLink(d)]))] : null,
       ]),
-      extra ? extra(row) : null,
       h('h3', null, 'Identifiers'),
       kv([
         ['DataID', h('code', null, entry.datasetId)],
@@ -115,9 +118,9 @@ export function renderDetail(el, { version, config, id, link, select, permalinkO
           externalLink(`https://github.com/${config.repository}/commits/${config.branch}/data/${meta.file}`, 'change history'))],
       ]),
       h('h3', null, 'How to cite'),
-      h('p', { class: 'small', style: { margin: '0 0 6px' } }, 'The original reference above, the project paper and the database:'),
-      citeBoxes(config, version, entryLink),
+      h('p', { class: 'small' }, 'The original reference above, the project paper and the database:'),
+      citeBoxes(config, version, entryLink, entry.datasetId),
       h('details', null, h('summary', null, 'Entry as published (JSON)'),
-        h('pre', { class: 'code' }, jsonfmt.stringify(entry)))));
-  return row;
+        // a tab stop, so that the keyboard can scroll it, also in the panel's Tab loop (explorer.js)
+        h('pre', { class: 'code', tabindex: 0 }, jsonfmt.stringify(entry)))));
 }

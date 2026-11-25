@@ -1,22 +1,40 @@
-// Canonical JSON for the muND data files (twin of tools/mundlib/jsonfmt.py).
+// Canonical JSON for the muND data files
+// (twin of tools/mundlib/jsonfmt.py; shared cases: tests/vectors/jsonfmt.json).
 //
-// * parse() is a strict JSON parser that remembers how every number was
-//   written, so `13.250` is written back as `13.250`.  Values are ordinary
-//   JavaScript numbers; the written form is kept in a side table that is
-//   looked up by (container, key).
-// * stringify() produces the canonical, diff-friendly layout:
-//     - two spaces, trailing newline;
-//     - objects: one member per line;
-//     - arrays of scalars: on one line;
-//     - other arrays: one element per line, each element written inline.
+// * Diff friendly: one data entry per line, one metadata field per line.
+// * Deterministic: a file that is read and written again gives the same bytes in Python and in
+//   JavaScript, unless a member name is a whole number such as "1" (JavaScript lists those first).
+//   Numbers computed by a program are written by each language's own rules (1e-07 / 1e-7).
+// * Faithful numbers: a number is written back exactly as it was typed (13.250 stays 13.250).
+//   The files remain standard JSON, so any JSON parser reads them; the parser here also keeps
+//   the written digits, and accepts finite numbers only and each member name once per object.
+//
+// Layout:
+//   1. Indentation is two spaces; the file ends with a single newline.
+//   2. An object is written with one member per line.
+//   3. An array whose elements are all scalars is written on one line.
+//   4. Any other array is written with one element per line, each element inline
+//      (on one line, ", " and ": " as separators).
+//   5. Strings are escaped as by JSON.stringify (non-ASCII is kept as is).
 
-const lexemes = new WeakMap(); // container -> Map(key -> text)
+// The written form of the numbers, looked up by (container, key): container -> Map(key -> text).
+// The values themselves are ordinary JavaScript numbers.
+const lexemes = new WeakMap();
 
-const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+// A JSON number; groups: the digits after the decimal point, the exponent.
+const NUMBER = '-?(?:0|[1-9]\\d*)(?:\\.(\\d+))?(?:[eE]([+-]?\\d+))?';
+const NUMBER_RE = new RegExp(`^${NUMBER}$`);
+const NUMBER_AT = new RegExp(NUMBER, 'y'); // a number starting at lastIndex
 
 export function isNumberLexeme(text) {
   return typeof text === 'string' && NUMBER_RE.test(text);
 }
+
+/** A JSON object (not null, not an array). */
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** The objects of a JSON array; [] for anything that is not an array. */
+export const objects = (v) => (Array.isArray(v) ? v.filter(isObject) : []);
 
 /** Text of a number as JavaScript writes it (shortest round-trip form). */
 function jsNumber(value) {
@@ -26,12 +44,12 @@ function jsNumber(value) {
   return Object.is(value, -0) ? '0' : String(value);
 }
 
-export function getLexeme(container, key) {
+function getLexeme(container, key) {
   const map = lexemes.get(container);
   return map ? map.get(String(key)) : undefined;
 }
 
-export function setLexeme(container, key, text) {
+function setLexeme(container, key, text) {
   let map = lexemes.get(container);
   if (!map) lexemes.set(container, (map = new Map()));
   if (text === undefined || text === null) map.delete(String(key));
@@ -60,16 +78,12 @@ export function numberText(container, key) {
 
 /** Digits after the decimal point in the written form of container[key]. */
 export function decimals(container, key) {
-  return decimalsOfText(numberText(container, key));
+  const m = NUMBER_RE.exec(numberText(container, key));
+  return m ? Math.max(0, (m[1] || '').length - Number(m[2] || 0)) : 0;
 }
 
-function decimalsOfText(text) {
-  const m = /^-?\d+(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text);
-  if (!m) return 0;
-  return Math.max(0, (m[1] || '').length - Number(m[2] || 0));
-}
-
-function copyLexemes(from, to, keys) {
+/** Carry the written form of the numbers at `keys` over from one container to another. */
+export function copyLexemes(from, to, keys) {
   const map = lexemes.get(from);
   if (!map) return;
   for (const key of keys) {
@@ -86,8 +100,7 @@ export function clone(value) {
     return out;
   }
   if (value !== null && typeof value === 'object') {
-    const out = {};
-    for (const key of Object.keys(value)) out[key] = clone(value[key]);
+    const out = Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clone(v)]));
     copyLexemes(value, out, Object.keys(value));
     return out;
   }
@@ -156,9 +169,8 @@ export function parse(text) {
   }
 
   function parseNumber() {
-    const m = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
-    m.lastIndex = i;
-    const found = m.exec(text);
+    NUMBER_AT.lastIndex = i;
+    const found = NUMBER_AT.exec(text);
     if (!found) fail('unexpected character');
     i += found[0].length;
     const value = Number(found[0]);
@@ -192,7 +204,9 @@ export function parse(text) {
     for (;;) {
       skip();
       if (text[i] !== '"') fail('expected a member name in double quotes');
+      const start = i;
       const key = parseString();
+      if (Object.hasOwn(out, key)) fail(`member ${JSON.stringify(key)} is written twice`, start);
       skip();
       if (text[i] !== ':') fail("expected ':'");
       i++;

@@ -1,59 +1,78 @@
 // Conversion between lifetime, capture rate and capture probability
-// (twin of tools/mundlib/convert.py).
+// (twin of tools/mundlib/convert.py; shared cases: tests/vectors/convert.json).
 //
 //   1 / tau_total = Lambda_cap + Q / tau_mu+
-//   P_cap         = Lambda_cap / (Lambda_cap + Q / tau_mu+)
+//   Bcap          = Lambda_cap / (Lambda_cap + Q / tau_mu+)
 //
-// Internal units: lifetime in ns, capture rate in 1/us, probability as fraction.
+// Q is the Huff factor (reduction of the decay rate of the bound muon) and
+// tau_mu+ the lifetime of the free positive muon.  Both come from
+// data/master.  Uncertainties are propagated to first order; the
+// uncertainty of Q and of tau_mu+ is neglected.
+//
+// Internal units: lifetime in ns, capture rate in 1/us, probability in %.
 
-const UNIT_FACTORS = {
+import { objects } from './jsonfmt.js';
+
+export const UNIT_FACTORS = {
   lifetime: { ns: 1.0, us: 1.0e3 },
   capture_rate: { 'us-1': 1.0, 'ms-1': 1.0e-3, 's-1': 1.0e-6 },
-  capture_probability: { '%': 1.0e-2 },
+  capture_probability: { '%': 1.0 },
 };
 
 /**
- * The three quantities: label, the unit they are converted to, and the member
- * of the result of Physics.convert() that holds them (`<key>_unc` holds the
- * uncertainty).
+ * The observables (the kinds of value a data entry gives): label, the unit
+ * they are converted to, and the member of the result of Physics.convert()
+ * that holds them (`<key>_unc` holds the uncertainty).
  */
-export const QUANTITIES = {
+export const OBSERVABLES = {
   lifetime: { label: 'Lifetime', unit: 'ns', key: 'lifetime_ns' },
   capture_rate: { label: 'Capture rate', unit: 'us-1', key: 'capture_rate_us-1' },
   capture_probability: { label: 'Capture probability', unit: '%', key: 'capture_probability_pct' },
 };
 
-export const OBSERVABLES = Object.keys(QUANTITIES);
-
-export const OBSERVABLE_LABELS = Object.fromEntries(OBSERVABLES.map((name) => [name, QUANTITIES[name].label]));
+export const KINDS = Object.keys(OBSERVABLES);
 
 export const UNIT_LABELS = {
   ns: 'ns', us: 'µs', 'us-1': 'µs⁻¹', 'ms-1': 'ms⁻¹', 's-1': 's⁻¹', '%': '%',
 };
 
-export const unitsOf = (observable) => Object.keys(UNIT_FACTORS[observable] || {});
+export const unitsOf = (kind) => Object.keys(UNIT_FACTORS[kind] || {});
+
+/** The label of the unit that the observable `kind` is converted to. */
+export const unitLabel = (kind) => UNIT_LABELS[OBSERVABLES[kind].unit];
 
 /**
  * One overall uncertainty from the list given in a data entry: the entry with
  * source 'total' if there is one, otherwise the sum in quadrature of the
- * listed components; null when the source gives no uncertainty.
+ * listed components; null when absent or outside the finite numeric range.
  */
 export function combinedUncertainty(uncertainties) {
-  const entries = (Array.isArray(uncertainties) ? uncertainties : [])
-    .filter((u) => u && typeof u === 'object' && typeof u.value === 'number');
+  const entries = objects(uncertainties).filter((u) => typeof u.value === 'number');
   const total = entries.find((u) => u.source === 'total');
   if (total) return total.value;
   if (!entries.length) return null;
-  return Math.sqrt(entries.reduce((sum, u) => sum + u.value ** 2, 0));
+  const scale = entries.reduce((max, u) => Math.max(max, Math.abs(u.value)), 0);
+  if (!scale) return 0;
+  const norm = scale * Math.sqrt(entries.reduce((sum, u) => sum + (u.value / scale) ** 2, 0));
+  return Number.isFinite(norm) ? norm : null;
 }
 
+/** What the `huff_source` of a result of Physics.convert() means. */
+export const HUFF_SOURCE_TEXT = {
+  nuclide: 'value for this nuclide',
+  element: 'element value (natural abundance)',
+  none: 'not tabulated: Q = 1 assumed',
+  given: 'given',
+};
+
 /** Whether q can be a Huff factor: a finite number with 0 < q <= 1 (as in the master table). */
-export const isHuffFactor = (q) => typeof q === 'number' && Number.isFinite(q) && q > 0 && q <= 1;
+export const isHuffFactor = (q) => Number.isFinite(q) && q > 0 && q <= 1;
 
 export class Physics {
   /** @param huff     content of data/master/huff_factors.json
    *  @param constants content of data/master/constants.json
-   *  Tables with a key listed twice, or without a usable mu_plus_lifetime, are refused. */
+   *  Huff factors listed twice or outside (0, 1], and a mu_plus_lifetime that is not
+   *  positive, are refused. */
   constructor(huff, constants) {
     this.byNuclide = new Map();
     this.byElement = new Map();
@@ -68,96 +87,89 @@ export class Physics {
       if (!isHuffFactor(r.q)) throw new Error(`the Huff factor of Z=${r.z} is not in (0, 1]`);
       this.byElement.set(r.z, r.q);
     }
-    const found = (constants.constants || []).filter((x) => x && x.name === 'mu_plus_lifetime');
-    if (!found.length) throw new Error('constant mu_plus_lifetime is missing');
-    if (found.length > 1) throw new Error('constant mu_plus_lifetime is listed twice');
-    if (found[0].unit !== 'ns') throw new Error(`constant mu_plus_lifetime must be given in ns, not ${found[0].unit}`);
-    if (!(typeof found[0].value === 'number' && found[0].value > 0)) throw new Error('constant mu_plus_lifetime must be positive');
-    this.muLifeNs = found[0].value;
-  }
-
-  /** Q for the nuclide, else the element average, else 1. */
-  huffFactor(z, a) {
-    if (a) {
-      const q = this.byNuclide.get(`${z}-${a}`);
-      if (q !== undefined) return q;
-    }
-    const avg = this.byElement.get(Number(z));
-    return avg === undefined ? 1.0 : avg;
+    const value = (constants.mu_plus_lifetime || {}).value;
+    if (!(typeof value === 'number' && value > 0)) throw new Error('mu_plus_lifetime must be a positive number of ns');
+    this.muLifeNs = value;
   }
 
   /**
-   * Where the Huff factor came from: 'nuclide' (tabulated for the isotope), 'element'
-   * (element value: natural targets and isotopes not tabulated) or 'none' (Q = 1 assumed).
+   * [Q, source]: the value tabulated for the nuclide ('nuclide'), else the element value
+   * ('element': natural targets and isotopes not tabulated), else 1 ('none').
    */
-  huffSource(z, a) {
-    if (a && this.byNuclide.has(`${z}-${a}`)) return 'nuclide';
-    return this.byElement.has(Number(z)) ? 'element' : 'none';
-  }
-
-  /** Bound-muon decay rate Q / tau_mu+ in 1/us. */
-  decayRate(z, a, q) {
-    return (q === undefined ? this.huffFactor(z, a) : q) / (this.muLifeNs / 1000.0);
+  huff(z, a) {
+    if (a && this.byNuclide.has(`${z}-${a}`)) return [this.byNuclide.get(`${z}-${a}`), 'nuclide'];
+    if (this.byElement.has(Number(z))) return [this.byElement.get(Number(z)), 'element'];
+    return [1.0, 'none'];
   }
 
   /**
    * Lifetime (ns), capture rate (1/us) and capture probability (%) of one
-   * data point; null when it cannot be converted.  Uncertainties are null
-   * when the source has none.  `q` overrides the Huff factor; a value that
-   * cannot be a Huff factor (see isHuffFactor) is refused, not replaced.
+   * data entry; null when it cannot be converted (unknown unit, value not a
+   * finite number, uncertainty negative or not a finite number).  Uncertainties
+   * are null when the source has none.  `q` overrides the Huff factor; a
+   * value that cannot be a Huff factor (see isHuffFactor) is refused, not replaced.
    */
   convert(z, a, observable, value, uncertainty, unit, q) {
     if (q !== undefined && !isHuffFactor(q)) throw new RangeError('a Huff factor must be a number in (0, 1]');
-    const factor = (UNIT_FACTORS[observable] || {})[unit];
-    if (factor === undefined || typeof value !== 'number' || !Number.isFinite(value)) return null;
+    const own = (object, key) => (Object.hasOwn(object, key) ? object[key] : undefined);
+    const factor = own(UNIT_FACTORS, observable) && own(UNIT_FACTORS[observable], unit);
     const hasUnc = uncertainty !== null && uncertainty !== undefined;
+    if (factor === undefined || !Number.isFinite(value) || (hasUnc && !(Number.isFinite(uncertainty) && uncertainty >= 0))) return null;
+    const [huff, source] = q === undefined ? this.huff(z, a) : [q, 'given'];
     const v = value * factor;
     const dv = hasUnc ? uncertainty * factor : 0.0;
-    const free = this.decayRate(z, a, q);
+    const free = (1000.0 * huff) / this.muLifeNs;
+    if (!Number.isFinite(v) || !Number.isFinite(free) || free <= 0 || (v === 0 && value !== 0)) return null;
 
-    const lifeToRate = (life, dlife) => {
-      if (life <= 0) return null;
-      const tau = life / 1000.0;
-      return [1.0 / tau - free, dlife / 1000.0 / tau ** 2];
-    };
-    const rateToLife = (rate, drate) => {
-      const total = rate + free;
-      return total <= 0 ? null : [1000.0 / total, (1000.0 * drate) / total ** 2];
-    };
-    const rateToProb = (rate, drate) => {
-      const total = rate + free;
-      return total <= 0 ? null : [rate / total, (free / total ** 2) * drate];
-    };
-    const probToRate = (prob, dprob) => {
-      const denom = 1.0 - prob;
-      return denom <= 0 ? null : [(free * prob) / denom, (free / denom ** 2) * dprob];
-    };
-
-    let life;
-    let rate;
+    let life, rate, prob;
+    let dlife = null, drate = null, dprob = null;
     if (observable === 'lifetime') {
-      life = [v, dv];
-      rate = lifeToRate(v, dv);
+      if (v <= 0) return null;
+      life = v;
+      const total = 1000.0 / life;
+      rate = total - free;
+      prob = 100.0 * (rate / total);
+      if (hasUnc) {
+        dlife = dv;
+        drate = (dv / life) * total;
+        dprob = (free / 10.0) * dv;
+      }
     } else if (observable === 'capture_rate') {
-      rate = [v, dv];
-      life = rateToLife(v, dv);
+      rate = v;
+      const total = rate + free;
+      if (total <= 0 || !Number.isFinite(total)) return null;
+      life = 1000.0 / total;
+      prob = 100.0 * (rate / total);
+      if (hasUnc) {
+        const relative = dv / total;
+        dlife = life * relative;
+        drate = dv;
+        dprob = (100.0 * (free / total)) * relative;
+      }
     } else {
-      rate = probToRate(v, dv);
-      life = rate ? rateToLife(rate[0], rate[1]) : null;
+      prob = v;
+      const remaining = 100.0 - prob;
+      if (prob < 0 || remaining <= 0) return null;
+      rate = free * (prob / remaining);
+      life = 10.0 * remaining / free;
+      if (hasUnc) {
+        dlife = (dv / free) * 10.0;
+        drate = (free / remaining) * (100.0 / remaining) * dv;
+        dprob = dv;
+      }
     }
-    if (!rate || !life) return null;
-    const prob = observable === 'capture_probability' ? [v, dv] : rateToProb(rate[0], rate[1]);
-    if (!prob) return null;
-    const unc = (x) => (hasUnc ? x : null);
+    if (![life, rate, prob].every(Number.isFinite)) return null;
+    if (hasUnc && ![dlife, drate, dprob].every((x) => Number.isFinite(x) && (x > 0 || uncertainty === 0))) return null;
+
     return {
-      huff_factor: q === undefined ? this.huffFactor(z, a) : q,
-      huff_source: q === undefined ? this.huffSource(z, a) : 'given',
-      lifetime_ns: life[0],
-      lifetime_ns_unc: unc(life[1]),
-      'capture_rate_us-1': rate[0],
-      'capture_rate_us-1_unc': unc(rate[1]),
-      capture_probability_pct: prob[0] * 100.0,
-      capture_probability_pct_unc: unc(prob[1] * 100.0),
+      huff_factor: huff,
+      huff_source: source,
+      lifetime_ns: life,
+      lifetime_ns_unc: dlife,
+      'capture_rate_us-1': rate,
+      'capture_rate_us-1_unc': drate,
+      capture_probability_pct: prob,
+      capture_probability_pct_unc: dprob,
     };
   }
 }

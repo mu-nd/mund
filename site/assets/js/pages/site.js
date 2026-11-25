@@ -17,6 +17,6 @@ export async function fetchJson(url) {
 
 /**
  * site/config.json: { repository, branch, siteUrl, paper, data, dataLicence }; `paper` and `data` are
- * what is cited (as in CITATION.cff); dataLicence null: not decided yet.
+ * what is cited (as in CITATION.cff).
  */
 export const loadConfig = () => fetchJson(siteUrl('config.json'));

@@ -1,25 +1,17 @@
-"""muND (Muon Nuclear Data) database tools.
+"""muND (Muon Nuclear Data) database tools, used by ``tools/mund.py`` and the automatic checks.
 
-Used by the command line tool ``tools/mund.py`` and by the automatic checks:
+The browser has the same rules in ``site/assets/js/core``: ids, jsonfmt, schema, cite,
+database and convert have a twin module of the same name there, and the constants below
+have vocabulary.js; the test vectors in ``tests/vectors`` keep both in agreement.
 
-* :mod:`mundlib.ids`       MetaID and DataID
-* :mod:`mundlib.jsonfmt`   canonical JSON that keeps the written digits of numbers
-* :mod:`mundlib.schema`    JSON Schema validation and normalisation
-* :mod:`mundlib.cite`      file labels and citation texts from bibliography entries
-* :mod:`mundlib.database`  the files under ``data/`` and their checks
-* :mod:`mundlib.convert`   lifetime <-> capture rate <-> capture probability
-* :mod:`mundlib.build`     the published data files and the web site
+Vocabulary of the database (twin of ``site/assets/js/core/vocabulary.js``)::
 
-The browser has the same rules in ``site/assets/js/core`` (one module of the
-same name for each of the first six); the test vectors in ``tests/vectors``
-keep both in agreement.
-
-Words used throughout:
-
-* *file*   one publication: a metadata record (``meta``) and its data entries
-* *entry*  one element of ``data``, identified by its ``datasetId``
-* *code*   ``EXP`` | ``TH`` | ``CUR`` | ``EVAL``, the short form of a file's
-  ``datasetType`` (``experiment`` | ``theory`` | ``curated`` | ``evaluated``)
+    sub-library  XR | LT | ES | BR
+    file         a metadata record (meta) and its data entries
+    entry        one element of data, identified by its datasetId
+    code         EXP | TH | CUR | EVAL, the short form of a file's datasetType
+                 (experiment | theory | curated | evaluated) in directory names,
+                 identifiers and short labels
 """
 
 SUBLIBRARIES = ("XR", "LT", "ES", "BR")

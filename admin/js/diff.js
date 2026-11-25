@@ -1,6 +1,7 @@
 // Line-by-line comparison of two texts (used to review changes before a save).
 
 import { h } from '../../site/assets/js/core/dom.js';
+import { T } from './i18n.js';
 
 /** [{ type: ' ' | '-' | '+', text, a, b }] with 1-based line numbers. */
 export function diffLines(before, after) {
@@ -68,7 +69,7 @@ export function renderDiff(before, after, context = 2) {
   });
   const body = h('div', { class: 'diff', role: 'figure' });
   if (!keep.some(Boolean)) {
-    body.appendChild(h('div', { class: 'diff-line same' }, h('span', { class: 'diff-text muted' }, '(no differences)')));
+    body.appendChild(h('div', { class: 'diff-line same' }, h('span', { class: 'diff-text muted' }, T('(違いはありません)', '(no differences)'))));
     return body;
   }
   let skipping = false;

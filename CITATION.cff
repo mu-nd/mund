@@ -3,7 +3,7 @@ title: "muND: Muon Nuclear Data"
 message: >-
   If you use these data, please cite the version of the data you used and the
   project paper given below. Individual values should be cited with their
-  original reference, which is stored with every data point.
+  original reference, which is stored with every data entry.
 type: dataset
 authors:
   - name: "muND Project Team"

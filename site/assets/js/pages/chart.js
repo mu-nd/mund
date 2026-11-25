@@ -4,7 +4,7 @@
 // for two or more series, the nearest point answers to the pointer, and every
 // value is also available in the tables below the chart.
 
-import { h, clear } from '../core/dom.js';
+import { h, replace } from '../core/dom.js';
 
 const MARGIN = { top: 14, right: 16, bottom: 44, left: 62 };
 const HEIGHT = 340;
@@ -26,34 +26,36 @@ function niceStep(span, target) {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
 }
 
-function tickText(v) {
-  if (v === 0) return '0';
-  const a = Math.abs(v);
-  if (a >= 100000 || a < 0.0001) return v.toExponential().replace('e+', 'e');
-  return String(Number(v.toPrecision(6)));
-}
+// A scale maps a value to a position; its ticks are [{ value, text }].
 
+/** Ticks at the multiples of a round step, all written with the decimals of the step: 0.68, 0.70, 0.72. */
 function linearScale(min, max, lo, hi) {
   const span = max - min || 1;
   const fn = (v) => lo + ((v - min) / span) * (hi - lo);
   fn.ticks = (count) => {
     const step = niceStep(span, count);
+    const decimals = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
     const out = [];
-    for (let v = Math.ceil(min / step - 1e-9) * step; v <= max + step * 1e-9; v += step) {
-      out.push(Number(v.toPrecision(12)));
+    for (let k = Math.ceil(min / step - 1e-9); k * step <= max + step * 1e-9; k++) {
+      const value = Number((k * step).toPrecision(12));
+      out.push({ value, text: value.toFixed(decimals) });
     }
     return out;
   };
   return fn;
 }
 
+/** Ticks at the powers of ten: 0.001 … 10000, beyond that 1e-5, 1e5. */
 function logScale(min, max, lo, hi) {
   const a = Math.log10(min);
   const b = Math.log10(max);
   const fn = (v) => (v > 0 ? lo + ((Math.log10(v) - a) / (b - a || 1)) * (hi - lo) : NaN);
   fn.ticks = () => {
     const out = [];
-    for (let e = Math.ceil(a - 1e-9); e <= Math.floor(b + 1e-9); e++) out.push(10 ** e);
+    for (let e = Math.ceil(a - 1e-9); e <= Math.floor(b + 1e-9); e++) {
+      const value = 10 ** e;
+      out.push({ value, text: value >= 100000 || value < 0.0001 ? value.toExponential().replace('e+', 'e') : String(Number(value.toPrecision(6))) });
+    }
     return out;
   };
   return fn;
@@ -78,19 +80,23 @@ function logScale(min, max, lo, hi) {
  */
 export function renderChart(container, spec) {
   let drawnWidth = -1;
+  let dismiss;
   const draw = () => {
     drawnWidth = container.clientWidth;
-    drawChart(container, spec);
+    dismiss = drawChart(container, spec);
   };
   const observer = new ResizeObserver(() => { if (container.clientWidth !== drawnWidth) draw(); });
   observer.observe(container);
   draw();
-  return () => observer.disconnect();
+  const escape = (e) => {
+    if (e.key === 'Escape' && dismiss?.()) e.stopPropagation();
+  };
+  document.addEventListener('keydown', escape, true);
+  return () => { observer.disconnect(); document.removeEventListener('keydown', escape, true); };
 }
 
 function drawChart(container, spec) {
-  clear(container);
-  container.classList.add('chart');
+  replace(container);
   const width = Math.max(300, container.clientWidth || 600);
   const series = spec.series.filter((s) => s.points.length);
   const all = series.flatMap((s) => s.points.map((p) => ({ ...p, series: s })));
@@ -134,15 +140,16 @@ function drawChart(container, spec) {
       points.forEach((p, i) => offsets.set(p, (i - (points.length - 1) / 2) * step));
     }
     xPos = (p) => MARGIN.left + (index.get(p.x) + 0.5) * bandW + (offsets.get(p) || 0);
-    xTicks = bands.map((b, i) => ({ px: MARGIN.left + (i + 0.5) * bandW, nodes: b.label() }));
+    const stride = Math.max(1, Math.ceil(40 / bandW));  // room for a superscript mass number and element symbol
+    xTicks = bands.flatMap((b, i) => i % stride === 0 ? [{ px: MARGIN.left + (i + 0.5) * bandW, nodes: b.label() }] : []);
   } else {
     const xs = usable.map((p) => p.x);
     const [x0, x1] = spec.x.domain || [Math.min(...xs), Math.max(...xs)];
     const scale = linearScale(x0, x1, MARGIN.left, MARGIN.left + plotW);
     xPos = (p) => scale(p.x);
     xTicks = scale.ticks(Math.max(4, Math.floor(plotW / 70)))
-      .filter((v) => v >= x0 && v <= x1)
-      .map((v) => ({ px: scale(v), label: tickText(v) }));
+      .filter((t) => t.value >= x0 && t.value <= x1)
+      .map((t) => ({ px: scale(t.value), label: t.text }));
   }
 
   const lows = usable.map((p) => (Number.isFinite(p.lo) && (!spec.y.log || p.lo > 0) ? p.lo : p.y));
@@ -168,10 +175,10 @@ function drawChart(container, spec) {
     class: 'chart-svg', width, height: HEIGHT, viewBox: `0 0 ${width} ${HEIGHT}`, role: 'img',
     'aria-label': `${spec.y.label} versus ${spec.x.label}. The same values are listed in the tables below.`,
   });
-  for (const v of yScale.ticks(6)) {
-    const y = yScale(v);
+  for (const t of yScale.ticks(6)) {
+    const y = yScale(t.value);
     svg.appendChild(h('line', { class: 'chart-grid', x1: MARGIN.left, x2: MARGIN.left + plotW, y1: y, y2: y }));
-    svg.appendChild(h('text', { class: 'chart-tick', x: MARGIN.left - 8, y: y + 4, 'text-anchor': 'end' }, tickText(v)));
+    svg.appendChild(h('text', { class: 'chart-tick', x: MARGIN.left - 8, y: y + 4, 'text-anchor': 'end' }, t.text));
   }
   svg.appendChild(h('line', {
     class: 'chart-axis', x1: MARGIN.left, x2: MARGIN.left + plotW, y1: MARGIN.top + plotH, y2: MARGIN.top + plotH,
@@ -219,7 +226,7 @@ function drawChart(container, spec) {
 
   // ---- hover: the nearest point within reach -----------------------------------
   const wrap = h('div', { class: 'chart-plot' }, svg);
-  const tip = h('div', { class: 'chart-tooltip', role: 'status', hidden: true });
+  const tip = h('div', { class: 'chart-tooltip', hidden: true });
   wrap.appendChild(tip);
   let active = null;
   const nearest = (event) => {
@@ -229,9 +236,9 @@ function drawChart(container, spec) {
     let best = null;
     let bestD = HIT_RADIUS ** 2;
     for (const item of placed) {
-      // context points only answer when nothing else is in reach
-      const d = (item.cx - px) ** 2 + (item.cy - py) ** 2 + (item.point.series.context ? 60 : 0);
-      if (d < bestD) { best = item; bestD = d; }
+      if (item.mark === event.target) return item;
+      const d = (item.cx - px) ** 2 + (item.cy - py) ** 2;
+      if (d <= bestD) { best = item; bestD = d; }
     }
     return best;
   };
@@ -241,20 +248,26 @@ function drawChart(container, spec) {
     if (!item) { tip.hidden = true; svg.style.cursor = ''; return; }
     item.mark.classList.add('hover');
     svg.style.cursor = spec.onSelect ? 'pointer' : '';
-    clear(tip).appendChild(spec.tooltip(item.point));
+    replace(tip, spec.tooltip(item.point));
     tip.hidden = false;
     const tipW = tip.offsetWidth;
-    const left = Math.min(Math.max(4, item.cx + 12), width - tipW - 4);
-    tip.style.left = `${item.cx + 12 + tipW > width - 4 ? Math.max(4, item.cx - 12 - tipW) : left}px`;
-    tip.style.top = `${Math.max(4, item.cy - tip.offsetHeight - 10)}px`;
+    const scale = svg.clientWidth / width;
+    const x = item.cx * scale, y = item.cy * scale;
+    tip.style.left = `${Math.max(0, Math.min(x - tipW / 2, wrap.clientWidth - tipW))}px`;
+    tip.style.top = `${y >= tip.offsetHeight + 3 ? y - tip.offsetHeight - 3 : y + 3}px`;
   };
   svg.addEventListener('pointermove', (e) => show(nearest(e)));
-  svg.addEventListener('pointerleave', () => show(null));
+  wrap.addEventListener('pointerleave', () => show(null));
   svg.addEventListener('click', (e) => {
     const item = nearest(e);
     if (item && spec.onSelect) spec.onSelect(item.point);
   });
   container.appendChild(wrap);
+  return () => {
+    if (!active) return false;
+    show(null);
+    return true;
+  };
 }
 
 /** Mark the point with the given key as selected without redrawing the chart. */

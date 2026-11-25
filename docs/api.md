@@ -1,9 +1,9 @@
 # API
 
 The data of every published version as JSON files, one element, nuclide,
-data entry or source per file. The files are made when the site is built:
-their addresses end in `.json` and take no query parameters. For everything at
-once, use [Downloads](https://ribf.riken.jp/muon/downloads/).
+data entry or metadata record per file. The files are made when the site is
+built: their addresses end in `.json` and take no query parameters. For
+everything at once, use [Downloads](https://ribf.riken.jp/muon/downloads/).
 
 `<version>` is `latest` (the development version) or a stable version `v1`,
 `v2` … ([Versions and citing](versioning.md)).
@@ -14,20 +14,28 @@ https://ribf.riken.jp/muon/api/<version>/...
 
 ## Files
 
-| Address | Content |
+| Address relative to the site root | Content and path keys |
 |---|---|
-| `api/versions.json` | the published versions and the one shown by default |
-| `api/<version>/info.json` | version, commit, date, how to cite it, licence, and what each sub-library holds |
-| `api/<version>/LT/index.json` | the elements and nuclides that have LT data, with their files and the number of entries of each kind, and the list of sources |
+| [`api/versions.json`](https://ribf.riken.jp/muon/api/versions.json) | Use `versions[].label` for `<version>` in addresses. `default` is the default label. `versions[].version` is the descriptive version string. |
+| `api/<version>/info.json` | Version, commit, date, citation, licence and sub-library counts. Resolve `files.LT` (the LT index) and `data` (the downloads directory) relative to this file. |
+| `api/<version>/LT/index.json` | Resolve `elements[].file`, `elements[].nuclides[].file`, `sources[].file` and the values of `datasetTypes` relative to this index. Each source lists its MetaID, dataset type, bibId, short reference and entry count. |
 | `api/<version>/LT/Si.json` | all entries of an element |
-| `api/<version>/LT/Si-28.json` | all entries of a nuclide |
+| `api/<version>/LT/Si-28.json` | all entries of a nuclide ([Si-28 in latest](https://ribf.riken.jp/muon/api/latest/LT/Si-28.json)) |
 | `api/<version>/LT/Si-nat.json` | all entries of targets of natural isotopic abundance |
 | `api/<version>/LT/evaluated.json` | all entries of one kind of data: `experiment`, `theory`, `curated` or `evaluated` (only the kinds that have data) |
-| `api/<version>/LT/entry/e489422fdeb4.json` | one data entry, by its DataID |
-| `api/<version>/LT/meta/4d2ed5c83736.json` | one source (metadata record, MetaID) and all its entries |
+| `api/<version>/LT/entry/e489422fdeb4.json` | one data entry, by its current DataID |
+| `api/<version>/LT/meta/4d2ed5c83736.json` | one metadata record (MetaID) and all its entries |
+
+The index uses `EXP`, `TH`, `CUR` and `EVAL` in element and nuclide `counts`,
+including zero counts. The corresponding keys in `datasetTypes` are
+`experiment`, `theory`, `curated` and `evaluated`, for kinds with entries.
+In a file of entries, resolve `meta[].file` relative to `data/<version>/raw/`
+at the site root.
 
 Element symbols are written as in the periodic table (`Si`, not `si` or `SI`).
 A file that does not exist is answered with HTTP status 404.
+Former DataIDs have no API files. To resolve one, find it in an entry's
+`legacyIds` in `data/<version>/LT.json` and use that entry's `datasetId`.
 
 ## Contents of a file of entries
 
@@ -35,9 +43,9 @@ All files of entries have the same form (`"format": "muND/api/LT/1"`):
 
 | Member | Content |
 |---|---|
-| `label`, `version`, `kind`, `commit`, `date` | the version of the data |
-| `citation` | how to cite: `paper` (the project paper) and `database` (this version), in the style of Physical Review, as on the site; cite the original reference of each value as well |
-| `dataLicence` | the licence of the data (`null` while it is not decided) |
+| `label`, `version`, `kind`, `commit`, `date` | the version of the data; `kind`: `release` (a stable version) or `development` |
+| `citation` | how to cite: `paper` (the project paper) and `database` (this version), in the style of Physical Review, as on the site. An entry file links to that entry in the Explorer. Cite the original reference of each value as well |
+| `dataLicence` | the data licence, or `null` when none is specified |
 | `selection` | what the file holds, for example `{"nuclide": "Si-28", "element": "Si", "z": 14, "mass": 28, "isomer": 0, "entries": 3}` |
 | `bibliography` | the references of these entries |
 | `meta` | the metadata records of these entries: experimental conditions or how the values were obtained |
@@ -72,7 +80,10 @@ base = "https://ribf.riken.jp/muon/api/latest/LT/"
 si28 = json.load(urlopen(base + "Si-28.json"))
 for entry in si28["data"]:
     c = entry["converted"]
-    print(entry["datasetType"], c["capture_rate_us-1"], c["capture_rate_us-1_unc"])
+    if c is None:
+        print(entry["datasetType"], "capture rate unavailable")
+    else:
+        print(entry["datasetType"], c["capture_rate_us-1"], c["capture_rate_us-1_unc"])
 ```
 
 The CSV file of a version, with pandas:

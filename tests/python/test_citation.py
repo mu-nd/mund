@@ -3,6 +3,7 @@ import re
 import unittest
 
 from helpers import ROOT
+from mundlib.cite import BIB_ID_FORMS
 
 
 class CitationMetadataTests(unittest.TestCase):
@@ -26,6 +27,19 @@ class CitationMetadataTests(unittest.TestCase):
         head = self.cff[:self.cff.index("preferred-citation:")]
         self.assertIn('title: "%s"' % self.config["data"]["title"], head)
         self.assertIn('- name: "%s"' % self.config["data"]["author"], head)
+
+
+class BibIdPatternTests(unittest.TestCase):
+    """The bibId pattern of every schema is made of the forms in tools/mundlib/cite.py
+    (the same check for cite.js: tests/js/suite.js)."""
+
+    def test_every_schema_has_the_pattern_of_the_forms(self):
+        pattern = r"^(%s)$" % "|".join("%s:%s" % form for form in BIB_ID_FORMS)
+        lt, bibliography = (json.loads((ROOT / "schema" / "v1" / name).read_text(encoding="utf-8"))
+                            for name in ("lt.schema.json", "bibliography.schema.json"))
+        self.assertEqual([lt["$defs"]["bibId"]["pattern"],
+                          bibliography["properties"]["references"]["items"]["properties"]["id"]["pattern"]],
+                         [pattern, pattern])
 
 
 if __name__ == "__main__":

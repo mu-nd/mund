@@ -6,7 +6,6 @@
   "type": "object",
   "properties": {
     "format": {"const": "muND/nuclides/1"},
-    "description": {"type": "string"},
     "elements": {
       "type": "array",
       "description": "Element symbols; index + 1 = atomic number Z.",

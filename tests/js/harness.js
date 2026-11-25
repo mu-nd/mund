@@ -37,6 +37,19 @@ function show(v) {
   }
 }
 
+// Compare arrays and plain records by their own keys.
+function sameValue(a, b) {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  } else if (![a, b].every((v) => [null, Object.prototype].includes(Object.getPrototypeOf(v)))) {
+    return false;
+  }
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && sameValue(a[k], b[k]));
+}
+
 function makeAsserts(result) {
   const fail = (message) => { throw new Error(message); };
   return {
@@ -50,12 +63,13 @@ function makeAsserts(result) {
     },
     deepEqual(actual, expected, message = '') {
       result.checks++;
-      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      if (!sameValue(actual, expected)) {
         fail(`${message} expected ${show(expected)} but got ${show(actual)}`);
       }
     },
     close(actual, expected, tolerance = 1e-9, message = '') {
       result.checks++;
+      if (!Number.isFinite(actual) || !Number.isFinite(expected)) fail(`${message} expected finite numbers`);
       const scale = Math.max(Math.abs(expected), 1e-300);
       if (!(Math.abs(actual - expected) / scale <= tolerance)) {
         fail(`${message} expected ${expected} but got ${actual}`);

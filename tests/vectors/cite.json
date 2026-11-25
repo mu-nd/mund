@@ -1,5 +1,5 @@
 {
-  "description": "File labels and citation texts derived from a bibliography entry (reference null: no entry).",
+  "description": "'cases': file labels and citation texts derived from a bibliography entry (reference null: no entry); 'bibIds': texts with the kind of bibId they are ('': none) and the name after the prefix; 'project': how to cite the project paper (null: it has no authors) and a version of the database, which the site shows at siteUrl + 'explorer/?v=' + the label of the version.",
   "cases": [
     {"meta": {"bibId": "DOI:10.1103/PhysRevC.35.2212"}, "reference": {"id": "DOI:10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"}, {"family": "Roalsvig"}], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}}, "fileLabel": "Suzuki1987", "citeText": "Suzuki et al., Phys. Rev. C 35, 2212 (1987)"},
     {"meta": {"bibId": "DOI:10.1103/PhysRevC.35.2212"}, "reference": {"id": "DOI:10.1103/PhysRevC.35.2212", "author": [{"family": "Suzuki"}, {"family": "Measday"}, {"family": "Roalsvig"}], "container-title": ["Physical Review C"], "short-container-title": ["Phys. Rev. C"], "volume": "35", "page": "2212-2224", "published": {"date-parts": [[1987, 6, 1]]}, "article-number": "024307"}, "fileLabel": "Suzuki1987", "citeText": "Suzuki et al., Phys. Rev. C 35, 024307 (1987)"},
@@ -9,6 +9,46 @@
     {"meta": {"bibId": "muND:unpublished"}, "reference": null, "fileLabel": "unpublished", "citeText": "muND:unpublished"},
     {"meta": {"bibId": "NSR:1987SU06"}, "reference": null, "fileLabel": "1987SU06", "citeText": "NSR:1987SU06"},
     {"meta": {"bibId": "DOI:10.1016/0375-9474(88)90330-2"}, "reference": null, "fileLabel": "0375947488903302", "citeText": "DOI:10.1016/0375-9474(88)90330-2"},
-    {"meta": {"bibId": "muND:x"}, "reference": {"id": "muND:x", "title": ["A report"]}, "fileLabel": "x", "citeText": "A report"}
+    {"meta": {"bibId": "muND:x"}, "reference": {"id": "muND:x", "title": ["A report"]}, "fileLabel": "x", "citeText": "A report"},
+    {"meta": {"bibId": "muND:sample"}, "reference": {"author": [{"family": "ꟲ"}], "published": {"date-parts": [[2020]]}}, "fileLabel": "sample", "citeText": "ꟲ (2020)"},
+    {"meta": {"bibId": "muND:test"}, "reference": {"author": [{}], "title": ["Foil measurements"]}, "fileLabel": "test", "citeText": "Foil measurements"},
+    {"meta": {"bibId": "muND:test"}, "reference": {"author": [{"family": "Veln"}], "article-number": "P-17", "page": "3-7"}, "fileLabel": "Veln", "citeText": "Veln, P-17"}
+  ],
+  "bibIds": [
+    {"bibId": "DOI:10.1103/PhysRevC.35.2212", "kind": "DOI", "name": "10.1103/PhysRevC.35.2212"},
+    {"bibId": "DOI:10.1016/0375-9474(88)90330-2", "kind": "DOI", "name": "10.1016/0375-9474(88)90330-2"},
+    {"bibId": "DOI:10.1103/x:y", "kind": "DOI", "name": "10.1103/x:y"},
+    {"bibId": " DOI:10.1103/x ", "kind": "DOI", "name": "10.1103/x"},
+    {"bibId": "NSR:1987SU06", "kind": "NSR", "name": "1987SU06"},
+    {"bibId": "muND:Suzuki1975thesis", "kind": "muND", "name": "Suzuki1975thesis"},
+    {"bibId": "muND:unpublished", "kind": "muND", "name": "unpublished"},
+    {"bibId": "doi:10.1103/x", "kind": "", "name": "doi:10.1103/x"},
+    {"bibId": "mund:x", "kind": "", "name": "mund:x"},
+    {"bibId": "DOI:10.1000/test|setup", "kind": "", "name": "DOI:10.1000/test|setup"},
+    {"bibId": "DOI:10.1103/a;b", "kind": "", "name": "DOI:10.1103/a;b"},
+    {"bibId": "DOI:10.1103/a b", "kind": "", "name": "DOI:10.1103/a b"},
+    {"bibId": "DOI:10.110/x", "kind": "", "name": "DOI:10.110/x"},
+    {"bibId": "NSR:1987", "kind": "", "name": "NSR:1987"},
+    {"bibId": "muND:", "kind": "", "name": "muND:"},
+    {"bibId": "muND:-x", "kind": "", "name": "muND:-x"},
+    {"bibId": "https://doi.org/10.1103/x", "kind": "", "name": "https://doi.org/10.1103/x"},
+    {"bibId": "10.1103/x", "kind": "", "name": "10.1103/x"},
+    {"bibId": "1987SU06", "kind": "", "name": "1987SU06"},
+    {"bibId": "muNDx", "kind": "", "name": "muNDx"},
+    {"bibId": "", "kind": "", "name": ""}
+  ],
+  "entryKeys": [
+    {"datasetId": "0123456789ab", "key": "muND_v1_0123456789ab"},
+    {"datasetId": "0123456789ac", "key": "muND_v1_0123456789ac"}
+  ],
+  "project": [
+    {"paper": {"title": "Muon Nuclear Data Development Project", "year": 2026, "url": "https://arxiv.org/abs/2605.15539", "arxiv": "2605.15539", "primaryClass": "nucl-ex", "authors": [{"family": "Watanabe", "given": "Yukinobu"}, {"family": "Niikura", "given": "Megumi"}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "latest", "version": "1.0.0+2.gabcdef1", "kind": "development", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "Y. Watanabe and M. Niikura, Muon Nuclear Data Development Project, arXiv:2605.15539 (2026).", "database": "muND Project Team, muND: Muon Nuclear Data, development version 1.0.0+2.gabcdef1, commit abcdef1, not a stable version (2026), https://ribf.riken.jp/muon/explorer/?v=latest."}},
+    {"paper": {"title": "Muon Nuclear Data Development Project", "year": 2026, "url": "https://arxiv.org/abs/2605.15539", "arxiv": "2605.15539", "primaryClass": "nucl-ex", "authors": [{"family": "Watanabe", "given": "Yukinobu"}, {"family": "Niikura", "given": "Megumi"}, {"family": "Abe", "given": "Shinichiro"}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "Y. Watanabe, M. Niikura, and S. Abe, Muon Nuclear Data Development Project, arXiv:2605.15539 (2026).", "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1."}},
+    {"paper": {"title": "Muon Nuclear Data Development Project", "year": 2026, "url": "https://arxiv.org/abs/2605.15539", "arxiv": "2605.15539", "primaryClass": "nucl-ex", "authors": [{"family": "Watanabe", "given": "Yukinobu"}, {"family": "Niikura", "given": "Megumi"}, {"family": "Abe", "given": "Shinichiro"}, {"family": "Biswas", "given": "Sayani"}, {"family": "Iwamoto", "given": "Hiroki"}, {"family": "Hillier", "given": "Adrian"}, {"family": "Kawamura", "given": "Naritoshi"}, {"family": "Kawase", "given": "Shoichiro"}, {"family": "Matsuzaki", "given": "Teiichiro"}, {"family": "Minato", "given": "Futoshi"}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": null}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "Y. Watanabe, M. Niikura, S. Abe, S. Biswas, H. Iwamoto, A. Hillier, N. Kawamura, S. Kawase, T. Matsuzaki, and F. Minato, Muon Nuclear Data Development Project, arXiv:2605.15539 (2026).", "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0, https://ribf.riken.jp/muon/explorer/?v=v1."}},
+    {"paper": {"title": "Muon Nuclear Data Development Project", "year": 2026, "url": "https://arxiv.org/abs/2605.15539", "arxiv": "2605.15539", "primaryClass": "nucl-ex", "authors": [{"family": "Watanabe", "given": "Yukinobu"}, {"family": "Niikura", "given": "Megumi"}, {"family": "Abe", "given": "Shinichiro"}, {"family": "Biswas", "given": "Sayani"}, {"family": "Iwamoto", "given": "Hiroki"}, {"family": "Hillier", "given": "Adrian"}, {"family": "Kawamura", "given": "Naritoshi"}, {"family": "Kawase", "given": "Shoichiro"}, {"family": "Matsuzaki", "given": "Teiichiro"}, {"family": "Minato", "given": "Futoshi"}, {"family": "Mizuno", "given": "Rurie"}, {"family": "Tomono", "given": "Dai"}, {"family": "Yamaguchi", "given": "Yuji"}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "latest", "version": "1.0.0+2.gabcdef1", "kind": "development", "commit": null, "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "Y. Watanabe et al., Muon Nuclear Data Development Project, arXiv:2605.15539 (2026).", "database": "muND Project Team, muND: Muon Nuclear Data, development version 1.0.0+2.gabcdef1, not a stable version (2026), https://ribf.riken.jp/muon/explorer/?v=latest."}},
+    {"paper": {"title": "A report", "year": 2025, "url": "https://example.org/report", "authors": [{"family": "Tavrel", "given": "𠮷郎-Meli﻿LariSeli"}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "𠮷.-M. L. Tavrel, A report, https://example.org/report (2025).", "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1."}},
+    {"paper": {"title": "A report", "year": 2025, "url": "https://example.org/report", "authors": [{"family": "Dupont", "given": "Jean--Pierre"}, {"family": "Sato", "given": "T. Y."}]}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": "J.-P. Dupont and T. Y. Sato, A report, https://example.org/report (2025).", "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1."}},
+    {"paper": {"title": "Muon Nuclear Data Development Project", "year": 2026, "url": "https://arxiv.org/abs/2605.15539", "arxiv": "2605.15539", "primaryClass": "nucl-ex", "authors": []}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "siteUrl": "https://ribf.riken.jp/muon/", "expect": {"paper": null, "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://ribf.riken.jp/muon/explorer/?v=v1."}},
+    {"paper": {"authors": []}, "data": {"title": "muND: Muon Nuclear Data", "author": "muND Project Team"}, "manifest": {"label": "v1", "version": "1.0.0", "kind": "release", "commit": "abcdef1234", "date": "2026-11-16T10:00:00+09:00"}, "url": "https://mund.example.invalid/muon/explorer/?v=v1&z=14&id=123456abcdef", "expect": {"paper": null, "database": "muND Project Team, muND: Muon Nuclear Data, version 1.0.0 (2026), https://mund.example.invalid/muon/explorer/?v=v1&z=14&id=123456abcdef."}}
   ]
 }

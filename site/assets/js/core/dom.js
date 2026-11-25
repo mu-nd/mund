@@ -1,8 +1,7 @@
 // Minimal DOM helpers (no framework).
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const SVG_TAGS = new Set(['svg', 'g', 'path', 'line', 'circle', 'rect', 'text', 'tspan', 'title', 'polygon',
-  'polyline', 'defs', 'clipPath']);
+const SVG_TAGS = new Set(['svg', 'g', 'path', 'line', 'text', 'tspan']);
 
 /**
  * Create an element.
@@ -45,51 +44,80 @@ function append(el, children) {
   return el;
 }
 
-export function clear(el) {
-  while (el.firstChild) el.removeChild(el.firstChild);
-  return el;
-}
-
 export function replace(el, ...children) {
-  clear(el);
+  el.replaceChildren();
   return append(el, children);
 }
 
-/** A link to another site, opened in a new tab. */
-export function externalLink(href, ...children) {
-  return h('a', { href, target: '_blank', rel: 'noopener' }, children);
+/** A link to another site, opened in a new tab; `attrs` adds attributes (a title …). */
+export function externalLink(href, children, attrs = {}) {
+  return h('a', { ...attrs, href, target: '_blank', rel: 'noopener' }, children);
+}
+
+/**
+ * A link to another state of the page: a plain click calls `follow(event)` in place of loading the
+ * href; a click with a modifier key (a new tab or window) follows the href.  Without `follow`, a plain link.
+ */
+export function stateLink(attrs, follow, ...children) {
+  return h('a', {
+    ...attrs,
+    onclick: follow && ((e) => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      follow(e);
+    }),
+  }, children);
+}
+
+/**
+ * The click handler of a table row that acts as a whole (class "selectable"): `act(event)` runs on a
+ * click that is not on a link in the row and does not end a text selection (a drag to copy a value).
+ */
+export function rowClick(act) {
+  return (e) => { if (!e.target.closest('a') && !String(getSelection())) act(e); };
 }
 
 /** The head of a card: its title (a text becomes an <h2>) and, on the right, optional controls. */
-export function cardHead(title, ...controls) {
+function cardHead(title, ...controls) {
   return h('div', { class: 'card-head' }, typeof title === 'string' ? h('h2', null, title) : title, controls);
 }
 
 /**
  * A segmented switch: one of a few choices, the chosen one raised (.seg).
- * @param label     what is chosen, for screen readers
- * @param choices   [{ value, text, title? }]
+ * Its buttons stay on the page, so the one clicked keeps the keyboard focus.
+ * @param label     what is chosen, for screen readers; null inside a fieldset whose legend says it
+ * @param choices   [{ value, text, title? }], each value a text
  * @param chosen    the value chosen at first
  * @param onchoose  called with the value of a click
  */
 export function segSwitch(label, choices, chosen, onchoose) {
-  const box = h('div', { class: 'seg', role: 'group', 'aria-label': label });
-  const draw = () => replace(box, choices.map(({ value, text, title = null }) => h('button', {
-    type: 'button', title, 'aria-pressed': String(value === chosen),
-    onclick: () => { chosen = value; draw(); onchoose(value); },
+  const box = h('div', { class: 'seg', role: 'group', 'aria-label': label }, choices.map(({ value, text, title = null }) => h('button', {
+    type: 'button', value, title, onclick: () => { setSegSwitch(box, value); onchoose(value); },
   }, text)));
-  draw();
+  setSegSwitch(box, chosen);
   return box;
 }
 
-/** A card: its head (see cardHead) and its content. */
-export function card({ title, controls = null, class: extra = null, id = null }, ...content) {
-  return h('section', { class: extra ? `card ${extra}` : 'card', id }, cardHead(title, controls), content);
+/** Raise the choice `value` of a segmented switch, also when it was chosen elsewhere (the browser's Back). */
+export function setSegSwitch(box, value) {
+  for (const button of box.children) button.setAttribute('aria-pressed', String(button.value === value));
+}
+
+/** A card: its head (see cardHead) when it has a title, and its content. */
+export function card({ title = null, controls = null, class: extra = null }, ...content) {
+  return h('section', { class: extra ? `card ${extra}` : 'card' }, title === null ? null : cardHead(title, controls), content);
 }
 
 /** The title of a page, with controls on the right (the version of the data …). */
 export function pageHeading(title, ...controls) {
   return h('div', { class: 'heading-row' }, h('h1', null, title), h('span', { class: 'spacer' }), controls);
+}
+
+/** The page header (the site, the data entry tool) casts a shadow once the page is scrolled (base.css). */
+export function headerShadow() {
+  const mark = () => document.body.classList.toggle('scrolled', window.scrollY > 4);
+  window.addEventListener('scroll', mark, { passive: true });
+  mark();
 }
 
 /** Nuclide name with the mass number as superscript: <sup>28</sup>Si. */

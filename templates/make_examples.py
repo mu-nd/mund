@@ -10,21 +10,16 @@ tests check that what this writes follows them.  Nothing here may be copied into
 """
 from __future__ import annotations
 
-import hashlib
 import math
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from mundlib import jsonfmt  # noqa: E402
+from mundlib import CODE_OF, ids, jsonfmt  # noqa: E402
+from mundlib.database import file_path  # noqa: E402
 
-CODE = {"experiment": "EXP", "theory": "TH", "curated": "CUR", "evaluated": "EVAL"}
 NOTE = "EXAMPLE: fictitious values for designing the pages; the format is not decided"
-
-
-def h12(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
 def unc(value: float) -> list:
@@ -46,7 +41,7 @@ def source(sub: str, n: int, dataset_type: str, author: str, year: int, title: s
                        "title": ["EXAMPLE - " + title], "container-title": ["Example Journal"],
                        "short-container-title": ["Example J."], "volume": str(n), "page": str(100 + n),
                        "published": {"date-parts": [[year]]}})
-    mid = h12("%s|%s-META|%s" % (sub, CODE[dataset_type], bib_id.upper()))
+    mid = ids.meta_id(sub, CODE_OF[dataset_type], bib_id)
     m = {"id": mid, "bibId": bib_id}
     m.update(meta)
     m["comment"] = NOTE
@@ -54,18 +49,16 @@ def source(sub: str, n: int, dataset_type: str, author: str, year: int, title: s
 
 
 def add(doc: dict, element: str, mass: int, detail: str, observable: dict, **extra) -> None:
-    """One entry; the draft identifier: sub-library, type, nuclide, MetaID and what the entry is about."""
-    sub, code = doc["sublibrary"], CODE[doc["datasetType"]]
-    did = h12("%s|%s|%s|%d|%s|%s" % (sub, code, element, mass * 1000, doc["meta"]["id"], detail.upper()))
+    """One entry; its DataID as for LT, with what the entry is about (the detail) as the key."""
+    sub, code = doc["sublibrary"], CODE_OF[doc["datasetType"]]
+    did = ids.data_id(sub, code, element, mass, doc["meta"]["id"], detail)
     entry = {"datasetId": did, "nuclide": {"element": element, "mass": mass, "isomer": 0}, "observable": observable}
     entry.update(extra)
     doc["data"].append(entry)
 
 
 def path_of(doc: dict) -> str:
-    ref = next(x for x in REFERENCES if x["id"] == doc["meta"]["bibId"])
-    label = "%s%d" % (ref["author"][0]["family"], ref["published"]["date-parts"][0][0])
-    return "data/%s/%s/%s_%s.json" % (doc["sublibrary"], CODE[doc["datasetType"]], label, doc["meta"]["id"])
+    return file_path(doc, next(x for x in REFERENCES if x["id"] == doc["meta"]["bibId"]))
 
 
 # ---- XR: muonic X-ray energies and intensities -------------------------------------------
@@ -74,15 +67,21 @@ def path_of(doc: dict) -> str:
 K_ALPHA = {"C": 75.3, "O": 133.5, "Al": 346.8, "Si": 400.2, "Ca": 783.8, "Fe": 1256.0, "Cu": 1512.0,
            "Pd": 3010.0, "Ag": 3140.0, "Au": 5591.0, "Pb": 5963.0, "Bi": 6032.0}
 Z = {"C": 6, "O": 8, "Al": 13, "Si": 14, "Ca": 20, "Fe": 26, "Cu": 29, "Pd": 46, "Ag": 47, "Au": 79, "Pb": 82, "Bi": 83}
+RY = 2.813                                              # muonic Rydberg (keV): 13.6057 eV x m_mu/m_e
 
 
 def transitions(element: str, mass: int):
-    """(transition, energy keV, intensity per muon) of a few lines."""
+    """(transition, energy keV, intensity per muon) of a few lines.
+
+    2p -> 1s comes from K_ALPHA (the nuclear size lowers 1s a lot in heavy atoms); the levels above
+    are those of a point charge, RY Z^2 / n^2, which the nuclear size hardly moves."""
     e = K_ALPHA[element] - (mass - 106) * 0.9 * (element == "Pd" and mass > 0)
     split = e * (Z[element] / 137.0) ** 2 * 0.1           # fine structure of 2p
+    z2 = Z[element] ** 2
+    d32, d43 = RY * z2 * (1 / 4 - 1 / 9), RY * z2 * (1 / 9 - 1 / 16)   # n = 3 -> 2 and 4 -> 3
     return [("2p1/2-1s1/2", e - split * 2 / 3, 0.27), ("2p3/2-1s1/2", e + split / 3, 0.53),
-            ("3p-1s", e * 1.185, 0.06), ("3d5/2-2p3/2", e * 0.185 - split / 3, 0.36),
-            ("3d3/2-2p1/2", e * 0.185 + split * 2 / 3, 0.21), ("4f-3d", e * 0.0648, 0.42)]
+            ("3p-1s", e + d32, 0.06), ("3d5/2-2p3/2", d32 - split / 3, 0.36),
+            ("3d3/2-2p1/2", d32 + split * 2 / 3, 0.21), ("4f-3d", d43, 0.42)]
 
 
 def make_xr():
@@ -224,11 +223,18 @@ def generate() -> dict:
 def main(args):
     if len(args) != 1:
         sys.exit(__doc__)
-    out = Path(args[0])
+    out = Path(args[0]).resolve()
+    database = ROOT / "data"
+    if database.exists() and any(p.exists() and p.samefile(database) for p in (out, *out.parents)):
+        sys.exit("choose an output folder outside the database")
     files = generate()
+    try:
+        (out / "data").mkdir(parents=True)
+    except FileExistsError:
+        sys.exit("choose an output folder without a data directory")
     for rel, text in files.items():
         (out / rel).parent.mkdir(parents=True, exist_ok=True)
-        (out / rel).write_text(text, encoding="utf-8")
+        (out / rel).write_bytes(text.encode("utf-8"))
     print("wrote %d files under %s" % (len(files), out / "data"))
 
 

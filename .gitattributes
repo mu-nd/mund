@@ -1,0 +1,2 @@
+# LF in every copy, so the data entry tool's blob ids are git's on Windows too
+* text=auto eol=lf

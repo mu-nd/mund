@@ -2,15 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ribf.riken.jp/muon/schema/v1/huff-factors.schema.json",
   "title": "muND Huff factors",
-  "description": "Huff factor Q of the muon bound in the 1s orbit (decay rate Q / tau(mu+)), used to convert between lifetime, capture rate and capture probability.",
+  "description": "Huff factor Q of the muon bound in the 1s orbit (decay rate Q / tau(mu+)), used to convert between lifetime, capture rate and capture probability. Q = 1 when neither table has an entry.",
   "type": "object",
   "properties": {
     "format": {"const": "muND/huff-factors/1"},
-    "description": {"type": "string"},
     "source": {"type": "string", "minLength": 1, "description": "Where the values come from (literature reference)."},
     "by_element": {
       "type": "array",
-      "description": "Q of an element, used when the mass number is 0 (natural abundance) or not tabulated.",
+      "description": "Element value of Q (natural abundance), used when the mass number is 0 or not tabulated.",
       "items": {
         "type": "object",
         "properties": {

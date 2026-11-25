@@ -7,16 +7,21 @@
 // a new file).  A file whose canonical name changed (new source, key
 // or first author) is a pair of drafts: the deletion of the old path and the
 // new path, which names the old one as its `origin`; the pair is discarded
-// and deleted together.  Drafts are kept in `storage` (localStorage) so that
-// they survive closing the page; they are read from it once, when the
-// workspace is created.  When the storage cannot be used, the drafts live in
+// and deleted together.  Drafts are kept in `storage` (localStorage, or
+// sessionStorage for a practice copy) so that they survive reloading the page;
+// they are read from it once, when the workspace is created, and no longer
+// written after close().  When the storage cannot be used, the drafts live in
 // memory only and storageProblem() says so.  A draft equal to the saved text
-// is dropped.
+// is dropped.  A bibliography entry that only a draft holds is removed when a
+// data file that named it changes, is discarded or deleted, and no file names
+// it any more.
 
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
 import { Physics } from '../../site/assets/js/core/convert.js';
+import { normalizeBibId } from '../../site/assets/js/core/ids.js';
 import { Database, DATA_DIR, MASTER_DIR, MASTER_FORMATS, isDataFilePath } from '../../site/assets/js/core/database.js';
-import { replaceOriginalIds } from './document.js';
+import { canonicalText } from '../../site/assets/js/core/schema.js';
+import { replaceOriginalIds, fileName } from './document.js';
 import { ConflictError } from './backend.js';
 
 const SCHEMA_DIR = 'schema/v1/';
@@ -25,33 +30,18 @@ const SUMMARY_PARTS = 3;   // a save message names up to this many files in its 
 /** A file the Database is made of (master tables, files of the sub-libraries, strays under data/). */
 const inDatabase = (path) => path.startsWith(`${DATA_DIR}/`) && path.endsWith('.json');
 
-/** 'LT/EXP Mizuno2025' for a file of a sub-library, 'master/facilities' for a master table, else the path. */
-function describe(path) {
-  const parts = path.split('/');
-  if (isDataFilePath(path) && parts.length === 4) return `${parts[1]}/${parts[2]} ${parts[3].replace(/(_[0-9a-f]{12})?\.json$/, '')}`;
-  if (path.startsWith(`${MASTER_DIR}/`)) return `master/${path.slice(MASTER_DIR.length + 1).replace(/\.json$/, '')}`;
-  return path;
-}
+/** The key of a bibliography entry: its id, compared case-insensitively. */
+const bibKey = (r) => normalizeBibId((r && r.id) || '');
 
-async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i], i);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
+const sourcesOf = (meta) => [meta?.bibId, ...(Array.isArray(meta?.relatedBibIds) ? meta.relatedBibIds : [])]
+  .filter((id) => typeof id === 'string' && id);
 
 export class Workspace {
   #drafts;            // path -> { content: text | null, baseSha: sha | null, origin?: path }
+  #sending = null;    // path -> content in the save under way
   #db = null;         // Database of the current texts (built on first use, then updated file by file)
   #issues = null;
   #physics;           // Physics of the current master tables (undefined: not built)
-  #upstreamIds = new Set();
   #listeners = new Set();
   #notifying = false;
   #readFailed = false;   // the drafts kept in the storage could not be read
@@ -60,7 +50,7 @@ export class Workspace {
   constructor(backend, storage) {
     this.backend = backend;
     this.storage = storage || null;
-    this.storageKey = `mund-admin:drafts:${backend.copy}:${backend.branch}`;
+    this.storageKey = `mund-admin:drafts:${backend.session.copy}:${backend.session.branch}`;
     this.upstream = new Map();   // path -> { sha, text }
     this.schemas = {};           // file name in schema/v1 -> schema
     this.#drafts = this.#readStorage();
@@ -82,29 +72,20 @@ export class Workspace {
     this.#listeners.add(fn);
   }
 
+  /** Stop keeping the drafts in the storage and telling the listeners (another tab took over). */
+  close() {
+    this.storage = null;
+    this.#listeners.clear();
+  }
+
   // ---- loading ---------------------------------------------------------------
   /** Read the files the server lists: the database, the schemas, VERSION and CHANGELOG.md. */
-  async load(onProgress = () => {}) {
+  async load() {
     const listed = await this.backend.listFiles();
-    let done = 0;
-    const texts = await mapLimit(listed, 8, async (f) => {
-      const text = await this.backend.readFile(f.path);
-      onProgress(++done, listed.length);
-      return text;
-    });
-    this.upstream = new Map(listed.map((f, i) => [f.path, { sha: f.sha, text: texts[i] }]));
+    this.upstream = new Map(listed.map((f) => [f.path, { sha: f.sha, text: f.text }]));
     this.schemas = {};
     for (const [path, entry] of this.upstream) {
       if (path.startsWith(SCHEMA_DIR)) this.schemas[path.slice(SCHEMA_DIR.length)] = JSON.parse(entry.text);
-    }
-    this.#upstreamIds = new Set();
-    for (const [path, entry] of this.upstream) {
-      if (!isDataFilePath(path)) continue;
-      let obj;
-      try { obj = jsonfmt.parse(entry.text); } catch (err) { continue; }
-      for (const row of (obj && Array.isArray(obj.data) ? obj.data : [])) {
-        if (row && typeof row.datasetId === 'string') this.#upstreamIds.add(row.datasetId);
-      }
     }
     for (const [path, draft] of this.#drafts) {
       if (draft.content === this.upstreamText(path)) this.#drafts.delete(path);
@@ -178,11 +159,6 @@ export class Workspace {
     return draft && draft.origin ? this.upstreamText(draft.origin) : null;
   }
 
-  /** Every datasetId of the saved files (as loaded). */
-  upstreamIds() {
-    return this.#upstreamIds;
-  }
-
   /**
    * The drafts, sorted by path: { path, content, baseSha, origin, status, outdated }.
    * `outdated`: the saved file is another version than the one the draft was made from.
@@ -205,7 +181,9 @@ export class Workspace {
 
   /** Delete a file.  For a renamed file the original stays deleted. */
   stageDelete(path) {
+    const sources = this.#sources([path]);
     this.#put(path, null);
+    this.#dropUnused(sources);
     this.#changed();
   }
 
@@ -215,6 +193,7 @@ export class Workspace {
    */
   move(from, to, text) {
     if (from !== to && this.text(to) !== null) return false;
+    const sources = this.#sources([from]);
     if (from && from !== to) {
       const previous = this.#drafts.get(from);
       const origin = previous && previous.origin ? previous.origin : (this.upstream.has(from) ? from : null);
@@ -225,6 +204,7 @@ export class Workspace {
     } else {
       this.#put(to, text);
     }
+    this.#dropUnused(sources);
     this.#changed();
     return true;
   }
@@ -235,13 +215,9 @@ export class Workspace {
     const linked = [path];
     if (draft && draft.origin) linked.push(draft.origin);
     for (const [other, d] of this.#drafts) if (d.origin === path) linked.push(other);
+    const sources = this.#sources(linked);
     for (const p of linked) this.#drop(p);
-    this.#changed();
-  }
-
-  discardAll() {
-    this.#drafts.clear();
-    this.#invalidate();
+    this.#dropUnused(sources);
     this.#changed();
   }
 
@@ -273,7 +249,7 @@ export class Workspace {
       let obj;
       try { obj = jsonfmt.parse(text); } catch (err) { continue; }
       if (!replaceOriginalIds(obj, mapping)) continue;
-      this.#put(path, this.db.canonicalText(obj));
+      this.#put(path, canonicalText(obj, this.schemas));
       touched.push(path);
     }
     if (touched.length) this.#changed();
@@ -282,47 +258,79 @@ export class Workspace {
 
   /**
    * Add or replace the bibliography entry of a bibId (its id; entries are kept sorted by it,
-   * compared case-insensitively) and stage the bibliography file.
+   * compared case-insensitively) and stage the bibliography file. Returns false if it cannot be read.
    */
   setReference(reference) {
-    const path = `${MASTER_DIR}/bibliography.json`;
-    let doc;
-    try { doc = jsonfmt.parse(this.text(path)); } catch (err) { doc = null; }
-    if (!doc || typeof doc !== 'object' || !Array.isArray(doc.references)) {
-      doc = { format: MASTER_FORMATS['bibliography.json'], references: [] };
-    }
-    const keyOf = (r) => String((r && r.id) || '').trim().toUpperCase();
-    const key = keyOf(reference);
-    doc.references = doc.references.filter((r) => keyOf(r) !== key);
+    const { path, doc } = this.#bibliography();
+    if (!doc) return false;
+    const key = bibKey(reference);
+    doc.references = doc.references.filter((r) => bibKey(r) !== key);
     doc.references.push(reference);
     doc.references.sort((a, b) => {
-      const x = keyOf(a);
-      const y = keyOf(b);
+      const x = bibKey(a);
+      const y = bibKey(b);
       return x < y ? -1 : x > y ? 1 : 0;
     });
-    this.stage(path, this.db.canonicalText(doc));
+    this.stage(path, canonicalText(doc, this.schemas));
+    return true;
+  }
+
+  /**
+   * Remove the bibliography entry of `bibId` that only a draft holds (the saved bibliography
+   * lacks it) and that no data file names (bibId or relatedBibIds).  Returns false if the
+   * bibliography cannot be read or the entry stays.
+   */
+  dropReference(bibId) {
+    const key = normalizeBibId(bibId);
+    const { path, doc } = this.#bibliography();
+    if (!doc) return false;
+    let saved;
+    try { saved = jsonfmt.parse(this.upstreamText(path)).references; } catch (err) { saved = null; }
+    if (Array.isArray(saved) && saved.some((r) => bibKey(r) === key)) return false;
+    if (this.db.sortedFiles().some((f) => sourcesOf(f.meta).some((id) => normalizeBibId(id) === key))) return false;
+    const kept = doc.references.filter((r) => bibKey(r) !== key);
+    if (kept.length === doc.references.length) return false;
+    doc.references = kept;
+    this.stage(path, canonicalText(doc, this.schemas));
+    return true;
   }
 
   // ---- saving ----------------------------------------------------------------------
   /**
    * Save every draft at once ({ sha, sent, pending, error } of the server),
    * then read the files again.  A draft whose text was sent is then done; a
-   * draft changed while the save was under way stays, as a change of what
-   * was just saved.  When a file was changed by someone else (ConflictError)
-   * the files are read again too, so that the drafts concerned are outdated;
-   * nothing is saved then, nor when the database would not be valid
-   * (InvalidError) or the server cannot be reached; the drafts stay.
+   * later edit stays as a draft, even when it restores the text before the
+   * save.  When the files cannot be read again, the save is done
+   * all the same and `reloadError` in the result says why; the drafts stay
+   * until the files are read.  When a file was changed by someone else
+   * (ConflictError) the files are read again too, so that the drafts
+   * concerned are outdated; nothing is saved then, nor when the database
+   * would not be valid (InvalidError) or the server cannot be reached; the
+   * drafts stay.
    */
   async save(message) {
     const changes = this.changes().map(({ path, content, baseSha }) => ({ path, content, baseSha }));
+    this.#sending = new Map(changes.map((c) => [c.path, c.content]));
     let result;
     try {
       result = await this.backend.save({ message, changes });
+      try {
+        await this.load();
+      } catch (reloadError) {
+        return { ...result, reloadError };
+      }
     } catch (err) {
       if (err instanceof ConflictError) await this.load();
+      else {
+        for (const { path } of changes) {
+          if (this.#drafts.has(path) && this.text(path) === this.upstreamText(path)) this.#drop(path);
+        }
+        this.#changed();
+      }
       throw err;
+    } finally {
+      this.#sending = null;
     }
-    await this.load();               // drops the drafts equal to the saved texts
     let changed = false;
     for (const c of changes) {
       const draft = this.#drafts.get(c.path);
@@ -351,7 +359,7 @@ export class Workspace {
     for (const c of changes) {
       if (c.status === 'deleted' && changes.some((o) => o.origin === c.path)) continue;   // named with the renamed file
       const verb = c.origin ? 'Update' : { added: 'Add', modified: 'Update', deleted: 'Delete' }[c.status];
-      parts.push(`${verb} ${describe(c.path)}`);
+      parts.push(`${verb} ${fileName(c.path)}`);
     }
     const many = parts.length > SUMMARY_PARTS;
     const subject = many ? `Update ${parts.length} files` : parts.join('; ');
@@ -360,9 +368,38 @@ export class Workspace {
   }
 
   // ---- bookkeeping -------------------------------------------------------------------
+  /** The sources (bibId, relatedBibIds) that the current texts of the data files among `paths` name. */
+  #sources(paths) {
+    const sources = new Set();
+    for (const path of paths) {
+      const text = path && isDataFilePath(path) ? this.text(path) : null;
+      if (text === null) continue;
+      try {
+        for (const id of sourcesOf(jsonfmt.parse(text)?.meta)) sources.add(id);
+      } catch (err) { /* an unreadable file has no identifiable source */ }
+    }
+    return sources;
+  }
+
+  /** After data files changed: remove the entries of `sources` that only a draft holds and no file names any more. */
+  #dropUnused(sources) {
+    for (const id of sources) this.dropReference(id);
+  }
+
+  /** The bibliography starts empty for a missing file. An unreadable file gives doc: null. */
+  #bibliography() {
+    const path = `${MASTER_DIR}/bibliography.json`;
+    const text = this.text(path);
+    if (text === null) return { path, doc: { format: MASTER_FORMATS['bibliography.json'], references: [] } };
+    let doc;
+    try { doc = jsonfmt.parse(text); } catch (err) { doc = null; }
+    return { path, doc: Array.isArray(doc?.references) ? doc : null };
+  }
+
   /** Set the text of `path` (null: deleted); a text equal to the saved one leaves no draft. */
   #put(path, content) {
-    if (content === this.upstreamText(path)) {
+    const reverting = this.#sending?.has(path) && this.#sending.get(path) !== content;
+    if (!reverting && content === this.upstreamText(path)) {
       this.#drop(path);
       return;
     }

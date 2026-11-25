@@ -3,19 +3,18 @@
 //   <site>/                      Home
 //   <site>/explorer/?v=<version>&z=14&a=28&ds=EXP,CUR&q=lifetime&id=<datasetId>
 //   <site>/downloads/?v=<version>
-//   <site>/tools/converter/?v=<version>
+//   <site>/tools/converter/?v=<version>&z=14
 //   <site>/docs/…  <site>/api/   documents (made from docs/*.md when the site is built)
 //
-//   v                 data version (a label of data/versions.json); the pages
+//   v                 data version (a label of api/versions.json); the pages
 //                     that show data add it to the address when it is missing,
 //                     so that the address always names the version shown, and
 //                     the links between the pages keep it
 //   z, a, ds, q, id   state of the explorer (element, mass number, dataset
 //                     codes, quantity of the chart, selected data entry)
 
-import { siteUrl } from '../core/site.js';
+import { siteUrl } from './site.js';
 import { CODES } from '../core/vocabulary.js';
-import { permalink } from './versioning.js';
 
 export const query = () => new URLSearchParams(location.search);
 
@@ -25,23 +24,29 @@ export const currentPage = () => document.body.dataset.page || '';
 /** Folder of a page below the site root. */
 const pagePath = (key) => (key ? `${key}/` : '');
 
-/** Absolute address of a page with query parameters (null and '' are left out). */
+/** Whether a parameter is written into an address: null, undefined and '' are left out. */
+const present = (value) => value !== null && value !== undefined && value !== '';
+
+/** Absolute address of a page with query parameters. */
 export function pageUrl(key, params = {}) {
   const text = new URLSearchParams(Object.entries(params)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .filter(([, value]) => present(value))
     .map(([name, value]) => [name, String(value)])).toString();
   return siteUrl(pagePath(key)) + (text ? `?${text}` : '');
 }
 
-/** The current address with some parameters replaced; null or '' removes one. */
+/** The target of the skip link: not a section of the page, so the addresses the pages build leave it out. */
+const SKIP_TARGET = '#main';
+
+/** The current address with some parameters replaced; a value that is not present removes one. */
 export function urlWith(patch) {
   const params = query();
   for (const [name, value] of Object.entries(patch)) {
-    if (value === null || value === undefined || value === '') params.delete(name);
-    else params.set(name, String(value));
+    if (present(value)) params.set(name, String(value));
+    else params.delete(name);
   }
   const text = params.toString();
-  return `${location.pathname}${text ? `?${text}` : ''}${location.hash}`;
+  return `${location.pathname}${text ? `?${text}` : ''}${location.hash === SKIP_TARGET ? '' : location.hash}`;
 }
 
 /** The parameter ds for a Set of dataset codes (null when all are chosen). */
@@ -54,4 +59,4 @@ export const versionUrl = (label) => urlWith({ v: label, id: null });
 export const pageLink = (key, params = {}) => pageUrl(key, { v: query().get('v'), ...params });
 
 /** Absolute address of the explorer for one data version (citations and permalinks). */
-export const explorerPermalink = (label, params = {}) => permalink(pageUrl('explorer'), label, params);
+export const explorerPermalink = (label, params = {}) => pageUrl('explorer', { v: label, ...params });

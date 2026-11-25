@@ -24,35 +24,27 @@
 </main>
 <script type="module">
 import { Harness } from './harness.js';
+import { CORE, PAGES, load, registerAll } from './modules.js';
 import { register } from './suite.js';
-import { register as registerExplorer } from './suite-explorer.js';
-import { modules } from './modules.js';
+import { register as registerPages } from './suite-pages.js';
+import { fetchText } from '../assets/js/pages/site.js';
 
-const cache = new Map();
-async function fetchText(url) {
-  if (!cache.has(url)) {
-    cache.set(url, fetch(url, { cache: 'no-store' }).then((r) => {
-      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-      return r.text();
-    }));
-  }
-  return cache.get(url);
-}
+const texts = new Map();   // url -> promise of its text: each file is fetched once
+const text = (url) => texts.get(url) || texts.set(url, fetchText(url)).get(url);
 const base = { vectors: './vectors/', schema: '../schema/v1/' };
 const env = {
-  text: (kind, name) => fetchText(base[kind] + name),
+  text: (kind, name) => text(base[kind] + name),
   async dataFiles() {
-    const manifest = JSON.parse(await fetchText('../data/latest/manifest.json'));
+    const manifest = JSON.parse(await text('../data/latest/manifest.json'));
     const raw = manifest.files.filter((f) => f.path.startsWith('raw/'));
     return Promise.all(raw.map(async (f) => ({
-      path: 'data/' + f.path.slice(4), text: await fetchText('../data/latest/' + f.path),
+      path: 'data/' + f.path.slice(4), text: await text('../data/latest/' + f.path),
     })));
   },
 };
 
-const h = new Harness();
-register(h, modules, env);
-registerExplorer(h, modules, env);
+const modules = await load(new URL('../assets/js/', import.meta.url), [...CORE, ...PAGES]);
+const h = registerAll(new Harness(), modules, env, [register, registerPages]);
 const list = document.getElementById('results');
 const results = await h.run((r) => {
   const li = document.createElement('li');

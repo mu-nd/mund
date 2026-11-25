@@ -7,7 +7,6 @@
 //   #/master                facilities and other master tables
 //   #/history[?path=...]    who saved what, when
 //   #/release               publish a version
-//   #/extraction[?task=...] values extracted twice from a source, compared, approved (extraction-view.js)
 //   #/help
 //
 // A page function fills its element and may return a handle:
@@ -15,17 +14,16 @@
 //   destroy()  the page is left
 // Pages receive the context `ctx` (backend, workspace, toast, dialog, navigate).
 
-import { h, replace, clear } from '../../site/assets/js/core/dom.js';
-import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
+import { h, replace, headerShadow } from '../../site/assets/js/core/dom.js';
 import { CODES } from '../../site/assets/js/core/vocabulary.js';
 import { isDataFilePath } from '../../site/assets/js/core/database.js';
-import { T, getLang, setLang, problemText } from './i18n.js';
+import { T, getLang, setLang, problemText, sendText } from './i18n.js';
 import { LocalBackend } from './backend.js';
 import { Workspace } from './workspace.js';
 import { openEditor } from './editor.js';
+import { parseObject } from './monaco.js';
 import { newDocument } from './document.js';
 import { renderDatasets, renderMaster, renderHistory, renderRelease, renderHelp } from './views.js';
-import { renderExtraction } from './extraction-view.js';
 
 const root = document.getElementById('app');
 const toastEl = document.getElementById('toasts');
@@ -33,6 +31,7 @@ const toastEl = document.getElementById('toasts');
 let chromeEl = null;
 let viewEl = null;
 let view = null;            // handle of the page shown
+let dialogCount = 0;        // numbers the titles of dialogs (their ids)
 
 const ctx = {
   backend: null,
@@ -45,10 +44,11 @@ const ctx = {
   },
 
   dialog({ title, body, confirm: confirmLabel, onConfirm }) {
-    const dialog = h('dialog', { class: 'modal' });
+    const titleId = `modal-title-${++dialogCount}`;
+    const dialog = h('dialog', { class: 'modal', 'aria-labelledby': titleId });
     const close = () => { dialog.close(); dialog.remove(); };
     replace(dialog,
-      h('div', { class: 'modal-head' }, h('h2', null, title),
+      h('div', { class: 'modal-head' }, h('h2', { id: titleId }, title),
         h('button', { class: 'btn small ghost', type: 'button', 'aria-label': T('閉じる', 'Close'), onclick: close }, '✕')),
       h('div', { class: 'modal-body' }, body),
       h('div', { class: 'modal-foot' },
@@ -93,8 +93,7 @@ async function reload() {
 async function sendAgain() {
   try {
     const result = await ctx.backend.send();
-    if (result.sent) ctx.toast(T('GitHub に送信しました', 'Sent to GitHub'));
-    else ctx.toast(result.error ? problemText(result.error) : T('送信先の GitHub が設定されていません。', 'There is no GitHub copy to send to.'), 'bad');
+    ctx.toast(sendText(result), result.sent ? 'good' : 'bad');
   } catch (err) {
     ctx.toast(problemText(err), 'bad');
   }
@@ -117,8 +116,7 @@ function editPage(page, params) {
   if (text !== null) {
     let doc;
     try {
-      doc = jsonfmt.parse(text);
-      if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('the top level must be an object');
+      doc = parseObject(text);
     } catch (err) {
       replace(page, h('p', { class: 'notice bad' }, T(`${path} は JSON として読めません: ${err.message}`, `${path} is not valid JSON: ${err.message}`)));
       return null;
@@ -136,7 +134,6 @@ const PAGES = {
   master: (page) => renderMaster(page, ctx),
   history: (page, params) => renderHistory(page, ctx, params),
   release: (page) => renderRelease(page, ctx),
-  extraction: (page, params) => renderExtraction(page, ctx, params),
   help: (page) => renderHelp(page, ctx),
 };
 
@@ -146,12 +143,13 @@ function leave() {
   if (view.flush && !view.flush()) return false;
   if (view.destroy) view.destroy();
   view = null;
-  clear(viewEl);
+  replace(viewEl);
   return true;
 }
 
 /** Show the page of the current address. */
 function render() {
+  if (!ctx.workspace) return;      // handed over to another tab
   const { name, params } = currentRoute();
   const page = h('div', { class: 'stack' });
   replace(viewEl, page);
@@ -159,6 +157,8 @@ function render() {
   window.scrollTo(0, 0);
   view = (PAGES[name] || PAGES.datasets)(page, params) || null;
 }
+
+headerShadow();
 
 window.addEventListener('hashchange', (event) => {
   if (!ctx.workspace) return;
@@ -170,7 +170,9 @@ window.addEventListener('hashchange', (event) => {
 });
 
 window.addEventListener('beforeunload', (event) => {
-  if (view && view.flush && !view.flush()) event.preventDefault();
+  const kept = view && view.flush ? view.flush() : true;
+  const inMemory = ctx.workspace && ['unavailable', 'write'].includes(ctx.workspace.storageProblem()) && ctx.workspace.changes().length;
+  if (!kept || inMemory) event.preventDefault();
 });
 
 function langButton() {
@@ -186,8 +188,8 @@ function langButton() {
 // ---------------------------------------------------------------------------
 
 function renderShell() {
-  chromeEl = h('div');
-  viewEl = h('main', { class: 'admin-main' });
+  chromeEl = h('div', { class: 'chrome' });
+  viewEl = h('main', { class: 'page' });
   replace(root, chromeEl, viewEl);
   render();
 }
@@ -202,11 +204,10 @@ function renderChrome() {
   const link = (key, label) => h('a', { href: `#/${key}`, 'aria-current': name === key || (key === 'datasets' && name === 'edit') ? 'page' : null }, label);
   replace(chromeEl,
     h('header', { class: 'site-header' }, h('div', { class: 'bar' },
-      h('a', { class: 'brand', href: '#/datasets' }, h('strong', null, 'Muon Nuclear Data'), h('span', null, T('データ入力ツール', 'Data entry'))),
+      h('a', { class: 'brand', href: '#/datasets' }, 'Muon Nuclear Data', h('span', null, T('データ入力ツール', 'Data entry'))),
       h('nav', { class: 'site-nav', 'aria-label': T('ページ', 'Pages') },
         link('datasets', T('データセット', 'Datasets')),
         link('master', T('マスタデータ', 'Master data')),
-        link('extraction', T('値の抽出', 'Extraction')),
         link('history', T('履歴', 'History')),
         link('release', T('版を公開', 'Publish')),
         link('help', T('使い方', 'Help'))),
@@ -218,14 +219,13 @@ function renderChrome() {
         h('span', { class: 'tag warn', title: backend.sendError ? problemText(backend.sendError) : T('保存したが、まだ GitHub に届いていない変更', 'Saves that have not reached GitHub yet') },
           T(`未送信 ${backend.pending}`, `${backend.pending} not sent`)),
         h('button', { class: 'btn small', type: 'button', onclick: sendAgain }, T('再送信', 'Send again'))) : null,
-      session.practice ? h('span', { class: 'tag warn' }, T('練習用', 'Practice')) : null,
-      h('span', { class: 'small muted' }, [session.repository || T('(GitHub なし)', '(no GitHub)'), session.branch, session.user ? session.user.name : null]
-        .filter(Boolean).join(' · ')),
-      h('button', { class: 'btn small', type: 'button', title: T('GitHub の最新の状態にする', 'Bring in the latest state from GitHub'), onclick: reload }, T('再読み込み', 'Reload')),
+      session.user ? h('span', { class: 'small muted' }, session.user.name)
+        : h('span', { class: 'tag warn', title: problemText({ code: 'identity' }) }, T('ログインが必要', 'Login needed')),
+      h('button', { class: 'btn small', type: 'button', title: T('ほかの人の変更を GitHub から取り込みます', 'Bring in other people’s changes from GitHub'), onclick: reload }, T('最新にする', 'Update')),
       langButton())),
-    session.practice ? h('div', { class: 'practice-bar' },
-      T('練習用: 練習用のコピーで動いています。ここで保存した内容は本物のデータには届きません。',
-        'Practice: this works on a throw-away copy. Nothing saved here reaches the real data.')) : null,
+    session.practice ? h('div', { class: 'notice warn notice-bar' },
+      T('練習用のコピーで動いています。「GitHub に送信」や版の公開も練習用の送信先で行われ、本物のデータや公開サイトには何も届きません。',
+        'Practice copy: “Sent to GitHub” and publishing go to a practice stand-in; nothing reaches the real data or the public site.')) : null,
     storageNotice(workspace.storageProblem()));
 }
 
@@ -240,7 +240,67 @@ function storageNotice(problem) {
     read: T('このブラウザに保持していた入力内容を読み込めませんでした。前回保存していなかった変更は表示されていません。',
       'What this browser kept of your earlier work could not be read. Changes not saved last time are not shown.'),
   }[problem];
-  return h('div', { class: 'notice bad storage-bar', role: 'alert' }, text);
+  return h('div', { class: 'notice bad notice-bar', role: 'alert' }, text);
+}
+
+// ---------------------------------------------------------------------------
+// one tab
+// ---------------------------------------------------------------------------
+// The tool works in one tab at a time, the tab holding the lock OWNER: the
+// drafts of two tabs would overwrite each other in the storage.  A new tab
+// asks the owner on the channel OWNER to hand over and goes on once the lock
+// is released, after the owner stored its edits and stopped writing drafts.
+
+const OWNER = 'mund-admin';
+let channel = null;
+let release = null;      // gives up the lock this tab holds
+let starting = false;    // a request to hand over waits until the start has ended
+let asked = false;       // another tab asked for the tool
+
+/** Hold the lock OWNER (at once when this browser has no Web Locks). */
+async function own() {
+  if (channel || !navigator.locks || typeof BroadcastChannel === 'undefined') return;
+  channel = new BroadcastChannel(OWNER);
+  channel.onmessage = (event) => {
+    if (event.data === 'busy' && !release) {
+      const status = root.querySelector('[role="status"]');
+      if (status) status.textContent = T('別のタブに、まだ保持できない入力があります。そのタブで仕上げるか破棄して閉じると、ここで始まります。',
+        'Another tab holds input that cannot be kept yet. Finish or discard it there and close that tab to start here.');
+    }
+    if (event.data !== 'open' || !release) return;
+    if (asked) { channel.postMessage('busy'); return; }
+    asked = true;
+    if (!starting) handOver();
+  };
+  const request = (options) => new Promise((granted) => {
+    navigator.locks.request(OWNER, options, (lock) => {
+      granted(Boolean(lock));
+      return lock ? new Promise((resolve) => { release = resolve; }) : null;
+    });
+  });
+  if (!(await request({ ifAvailable: true }))) {
+    channel.postMessage('open');
+    await request({});
+  }
+}
+
+/** Store the pending edits, stop keeping drafts and leave the tool to the tab that asked for it. */
+function handOver() {
+  if (view && view.flush && !view.flush()) {
+    channel.postMessage('busy');
+    ctx.toast(T('別のタブでツールが開かれました。このファイルを仕上げるか破棄してから、このタブを閉じてください。',
+      'The tool was opened in another tab. Finish or discard this file, then close this tab.'), 'bad');
+    return;
+  }
+  if (view && view.destroy) view.destroy();
+  view = null;
+  chromeEl = null;
+  if (ctx.workspace) ctx.workspace.close();
+  ctx.workspace = null;
+  channel.close();
+  release();
+  replace(root, h('main', { class: 'page' }, h('p', { class: 'notice warn' },
+    T('このツールは別のタブで開かれています。このタブは閉じてください。', 'The tool is open in another tab. Please close this tab.'))));
 }
 
 // ---------------------------------------------------------------------------
@@ -248,13 +308,14 @@ function storageNotice(problem) {
 // ---------------------------------------------------------------------------
 
 async function start() {
-  const status = h('p', { class: 'muted', role: 'status' }, T('準備しています…', 'Starting …'));
-  replace(root, h('main', { class: 'page' }, status));
+  starting = true;
+  replace(root, h('main', { class: 'page' }, h('p', { class: 'muted', role: 'status' }, T('準備しています…', 'Starting …'))));
+  await own();
   const backend = new LocalBackend();
   try {
     const { sync } = await backend.connect();
-    const workspace = new Workspace(backend, draftStorage());
-    await workspace.load((done, total) => { status.textContent = T(`ファイルを読み込み中 ${done} / ${total}`, `Loading files ${done} / ${total}`); });
+    const workspace = new Workspace(backend, draftStorage(backend.session));
+    await workspace.load();
     ctx.backend = backend;
     ctx.workspace = workspace;
     workspace.onChange(renderChrome);
@@ -269,10 +330,13 @@ async function start() {
         'The tool is started with pixi run admin in a terminal, in the folder of the data (mund).')),
       h('div', { class: 'row' }, langButton())));
   }
+  starting = false;
+  if (asked) handOver();
 }
 
-function draftStorage() {
-  try { return localStorage; } catch (err) { return null; }
+/** Where the drafts are kept: for a practice copy (new at every start) only as long as the tab is open. */
+function draftStorage(session) {
+  try { return session.practice ? sessionStorage : localStorage; } catch (err) { return null; }
 }
 
 start();

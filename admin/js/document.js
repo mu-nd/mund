@@ -1,6 +1,6 @@
 // Operations on a dataset document - the parsed content of one file of a
-// sub-library - as the editor performs them.  No DOM: the tests import this
-// module.
+// sub-library - as the editor performs them, and the editor's document itself
+// (Draft).  No DOM: the tests import this module.
 //
 // A data entry has the shape described in docs/data-format.md:
 //   { datasetId, nuclide: { element, mass, isomer },
@@ -13,14 +13,17 @@
 // here (newDocument, newEntry).
 
 import * as jsonfmt from '../../site/assets/js/core/jsonfmt.js';
+import { isObject, isNumberLexeme } from '../../site/assets/js/core/jsonfmt.js';
+import { normalizeElement } from '../../site/assets/js/core/ids.js';
 import { TYPE_OF } from '../../site/assets/js/core/vocabulary.js';
-import { entryHash } from '../../site/assets/js/core/database.js';
-import { OBSERVABLES, unitsOf } from '../../site/assets/js/core/convert.js';
+import { MASTER_DIR, entryHash, isDataFilePath, expectedMetaId, filePath, assignIds } from '../../site/assets/js/core/database.js';
+import { canonicalText } from '../../site/assets/js/core/schema.js';
+import { KINDS, unitsOf } from '../../site/assets/js/core/convert.js';
+import { bibKind, isBibId } from '../../site/assets/js/core/cite.js';
 
 /** Order of the uncertainty components in an entry. */
 const SOURCE_ORDER = ['total', 'statistical', 'systematic', 'other'];
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const dataOf = (doc) => (isObject(doc) && Array.isArray(doc.data) ? doc.data : []);
 const idOf = (entry) => (isObject(entry) && typeof entry.datasetId === 'string' ? entry.datasetId : null);
 const legacyOf = (entry) => (isObject(entry) && Array.isArray(entry.legacyIds) ? entry.legacyIds.filter((id) => typeof id === 'string') : []);
@@ -51,9 +54,15 @@ export function gridProblem(entry) {
   if (!isObject(entry)) return 'entry';
   if (!isObject(entry.nuclide)) return 'nuclide';
   if (!isObject(entry.observable)) return 'observable';
-  if (!OBSERVABLES.includes(entry.observable.kind)) return 'kind';
+  if (!KINDS.includes(entry.observable.kind)) return 'kind';
   if (!isObject(entry.observable[entry.observable.kind])) return 'value';
   return null;
+}
+
+/** The kinds offered for this dataset, including the current kind of a row needing correction. */
+export function kindChoices(code, current) {
+  if (code !== 'CUR' && code !== 'EVAL') return KINDS;
+  return KINDS.includes(current) && current !== 'capture_rate' ? ['capture_rate', current] : ['capture_rate'];
 }
 
 /** The units offered for a value block: those of the kind, and first the block's own unit if it is not one of them. */
@@ -96,7 +105,7 @@ export function setNumberField(obj, key, text) {
   else if (!jsonfmt.setNumber(obj, key, t)) obj[key] = t;
 }
 
-const uncertaintiesOf = (block) => (Array.isArray(block.uncertainties) ? block.uncertainties : []);
+export const uncertaintiesOf = (block) => (Array.isArray(block.uncertainties) ? block.uncertainties : []);
 
 export function uncertaintyText(block, source) {
   const u = uncertaintiesOf(block).find((x) => x && x.source === source);
@@ -121,17 +130,63 @@ export function setUncertainty(block, source, text) {
   setNumberField(u, 'value', t);
 }
 
-/** Whether `text` is a bibId (DOI, NSR: keynumber or muND: key) as the file's schema defines it ($defs/bibId). */
-export function isBibId(text, schema) {
-  const def = schema && schema.$defs && schema.$defs.bibId;
-  return Boolean(def && typeof def.pattern === 'string' && new RegExp(def.pattern, 'u').test(text));
+/**
+ * Rows pasted from a spreadsheet into the data grid.  Columns: element, mass
+ * number (an integer or nat), value, uncertainty, [key], [comment], separated
+ * by tabs, commas or blanks.  The element may carry the mass number (28Si,
+ * Si-28, natSi); the mass column is then left out.  Lines that cannot be
+ * understood (including a nonnumeric uncertainty) are returned in `skipped`.
+ */
+export function parsePastedRows(text, elements) {
+  const symbols = new Set(elements);
+  const rows = [];
+  const skipped = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    let cells = line.includes('\t') ? line.split('\t') : line.includes(',') ? line.split(',') : line.split(/\s+/);
+    cells = cells.map((c) => c.trim());
+    let element = null;
+    let mass = null;
+    const first = cells.shift() || '';
+    let m = /^(\d+|nat)[-\s]?([A-Za-z]{1,2})$/.exec(first);                 // 28Si, natSi
+    if (m) {
+      element = m[2];
+      mass = m[1] === 'nat' ? '0' : m[1];
+    } else if ((m = /^([A-Za-z]{1,2})[-\s]?(\d+|nat)$/.exec(first))) {      // Si-28, Si28
+      element = m[1];
+      mass = m[2] === 'nat' ? '0' : m[2];
+    } else if (/^[A-Za-z]{1,2}$/.test(first)) {                              // Si <tab> 28
+      element = first;
+      if (cells.length >= 2 && /^nat$/i.test(cells[0])) {
+        cells.shift();
+        mass = '0';
+      } else if (cells.length >= 2 && /^\d+$/.test(cells[0]) && Number(cells[0]) <= 300) {
+        mass = cells.shift();
+      }
+    }
+    element = element ? normalizeElement(element) : null;
+    const [value, uncertainty, key, ...rest] = cells;
+    const valueText = String(value === undefined ? '' : value).trim();
+    const uncText = uncertainty || '';
+    if (!element || !symbols.has(element) || mass === null || !isNumberLexeme(valueText) || (uncText && !isNumberLexeme(uncText))) {
+      skipped.push(raw);
+      continue;
+    }
+    rows.push({
+      element, mass: Number(mass), value: valueText,
+      uncertainty: uncText,
+      key: key || '', comment: rest.join(' ').trim(),
+    });
+  }
+  return { rows, skipped };
 }
 
 /** A typed or pasted source as a bibId: a DOI or a doi.org address gets DOI:, a bare NSR keynumber NSR:. */
 export function sourceText(text) {
   const t = String(text || '').trim().replace(/^(https?:\/\/(dx\.)?doi\.org\/|doi:\s*)/i, '');
   if (/^10\./.test(t)) return `DOI:${t}`;
-  return /^[0-9]{4}[A-Za-z]{2}[A-Za-z0-9]{2}$/.test(t) ? `NSR:${t}` : t;
+  return bibKind(`NSR:${t}`) === 'NSR' ? `NSR:${t}` : t;
 }
 
 /** Short name of an entry's nuclide and key: '30Si', 'natSi [plate]'. */
@@ -142,10 +197,13 @@ export function entryLabel(entry) {
   return `${mass}${element}${isObject(entry) && typeof entry.key === 'string' && entry.key ? ` [${entry.key}]` : ''}`;
 }
 
-/** 'LT/EXP Mizuno2025' for the file data/LT/EXP/Mizuno2025_4d2ed5c83736.json. */
+/** 'LT/EXP Mizuno2025' for the file data/LT/EXP/Mizuno2025_4d2ed5c83736.json, 'master/facilities' for a master table, else the path. */
 export function fileName(path) {
-  const parts = String(path).split('/');
-  return parts.length === 4 ? `${parts[1]}/${parts[2]} ${parts[3].replace(/(_[0-9a-f]{12})?\.json$/, '')}` : String(path);
+  const p = String(path);
+  const parts = p.split('/');
+  if (isDataFilePath(p) && parts.length === 4) return `${parts[1]}/${parts[2]} ${parts[3].replace(/(_[0-9a-f]{12})?\.json$/, '')}`;
+  if (p.startsWith(`${MASTER_DIR}/`)) return `master/${p.slice(MASTER_DIR.length + 1).replace(/\.json$/, '')}`;
+  return p;
 }
 
 /** The datasetIds of the entries of a file's text (an empty set for no text or text that is not JSON). */
@@ -163,7 +221,8 @@ export function datasetIdsOf(text) {
 /**
  * Find entries of the database `db` by datasetId, or by an earlier identifier
  * (legacyIds) that names exactly one entry - as the checks resolve
- * originalData.  resolve(id) -> { current, path, index, code, entry } | null.
+ * originalData.  resolve(id) -> { current, path, index, code, entry } | null;
+ * of(item) resolves the datasetId of an originalData item (null for anything else).
  */
 export function entryLookup(db) {
   const byId = new Map();
@@ -182,12 +241,11 @@ export function entryLookup(db) {
       for (const lid of legacyOf(entry)) if (!byId.has(lid)) legacy.set(lid, legacy.has(lid) ? null : id);
     }
   }
-  return {
-    resolve(id) {
-      const current = byId.has(id) ? id : legacy.get(id);
-      return current ? { current, ...byId.get(current) } : null;
-    },
+  const resolve = (id) => {
+    const current = byId.has(id) ? id : legacy.get(id);
+    return current ? { current, ...byId.get(current) } : null;
   };
+  return { resolve, of: (item) => resolve(idOf(item)) };
 }
 
 /** The datasetIds named in an entry's originalData (as written). */
@@ -237,14 +295,16 @@ export function parseOriginalData(text, pool, lookup) {
  */
 export function pickOriginalData(items, offered, chosen, lookup) {
   const about = (item) => {
-    const t = isObject(item) && typeof item.datasetId === 'string' ? lookup.resolve(item.datasetId) : null;
+    const t = lookup.of(item);
     return t ? t.current : null;
   };
   const kept = (Array.isArray(items) ? items : []).filter((item) => {
     const current = about(item);
     return current === null || !offered.includes(current) || chosen.has(current);
-  }).map((item) => (isObject(item) && typeof item.entryHash !== 'string' && about(item) !== null
-    ? { ...item, entryHash: entryHash(lookup.resolve(item.datasetId).entry) } : item));
+  }).map((item) => {
+    const t = lookup.of(item);
+    return t && typeof item.entryHash !== 'string' ? { ...item, entryHash: entryHash(t.entry) } : item;
+  });
   const covered = new Set(kept.map(about).filter(Boolean));
   return [...kept, ...offered.filter((id) => chosen.has(id) && !covered.has(id)).map((id) => freshItem(id, lookup))];
 }
@@ -255,7 +315,7 @@ export function pickOriginalData(items, offered, chosen, lookup) {
  * when the item names no entry.
  */
 export function confirmOriginal(item, lookup) {
-  const target = isObject(item) && typeof item.datasetId === 'string' ? lookup.resolve(item.datasetId) : null;
+  const target = lookup.of(item);
   if (!target) return false;
   item.entryHash = entryHash(target.entry);
   return true;
@@ -310,7 +370,7 @@ function setLegacy(entry, list) {
  *   'same'       a correction of the same entry: the old datasetId goes into
  *                legacyIds and originalData that named it names the new one
  *                (in every file, this one included);
- *   'different'  different data: legacyIds are not kept and references stay
+ *   'different'  different data: legacyIds and corrections are removed and references stay
  *                as they are, so the checks report them.
  * A choice that no longer fits the entry (its identifiers changed again, it
  * was deleted) is undone.  A document read from a file in which an entry
@@ -320,9 +380,9 @@ function setLegacy(entry, list) {
  * `workspace` (replaceIds) and `path` (the file of the document) are needed
  * where other files are changed.
  */
-export class IdTracker {
+class IdTracker {
   #claims = new WeakMap();   // entry -> datasetId of the saved entry it was opened as
-  #choices = new Map();      // entry -> { choice, from, to, legacy: legacyIds before the choice | null }
+  #choices = new Map();      // entry -> choice, identifiers and history before the choice
   #changes = [];             // of the last review
 
   /** `saved`: the datasetIds of the saved version of the file. */
@@ -426,6 +486,7 @@ export class IdTracker {
     if (previous) this.#undo(entry, previous, doc, workspace, path);
     const legacy = Array.isArray(entry.legacyIds) ? [...entry.legacyIds] : null;
     let touched = [];
+    const corrections = entry.corrections;
     if (choice === 'same') {
       setLegacy(entry, [...new Set([...(legacy || []), change.from])].filter((id) => id !== change.to));
       const mapping = new Map([[change.from, change.to]]);
@@ -433,8 +494,9 @@ export class IdTracker {
       touched = workspace.replaceIds(mapping, path);
     } else {
       delete entry.legacyIds;
+      delete entry.corrections;
     }
-    this.#choices.set(entry, { choice, from: change.from, to: change.to, legacy });
+    this.#choices.set(entry, { choice, from: change.from, to: change.to, legacy, corrections });
     change.choice = choice;
     return touched;
   }
@@ -447,10 +509,95 @@ export class IdTracker {
 
   #undo(entry, choice, doc, workspace, path) {
     this.#choices.delete(entry);
-    if (dataOf(doc).includes(entry)) setLegacy(entry, choice.legacy);
+    if (dataOf(doc).includes(entry)) {
+      setLegacy(entry, choice.legacy);
+      if (choice.choice === 'different' && choice.corrections !== undefined) entry.corrections = choice.corrections;
+    }
     if (choice.choice !== 'same') return;
     const back = new Map([[choice.to, choice.from]]);
     replaceOriginalIds(doc, back);
     workspace.replaceIds(back, path);
+  }
+}
+
+// ---- the editor's document --------------------------------------------------------
+
+/**
+ * The document the editor holds: `doc`, stored as a draft in the workspace at
+ * `path` (null until it is first stored), and its entries followed by an
+ * IdTracker against the saved version of the file.
+ */
+export class Draft {
+  #workspace;
+  #tracker;
+  #review = null;
+
+  constructor(workspace, path, doc) {
+    this.#workspace = workspace;
+    this.path = path;
+    this.doc = doc;
+    this.#tracker = new IdTracker(doc, this.#savedIds());
+  }
+
+  /** The tracker's review of the entries at the last store (IdTracker.review); null until then. */
+  get review() {
+    return this.#review;
+  }
+
+  /** The text the document is stored as and the JSON tab shows. */
+  text() {
+    return canonicalText(this.doc, this.#workspace.schemas);
+  }
+
+  /**
+   * Store the document in the workspace as a draft under its canonical file
+   * name.  `reference`, the reference card (reference.js), gives the
+   * bibliography entry of the source, which the file is named after (entryFor(bibId)),
+   * and stages it before the document is stored (save(bibId)); without it, the file is named after
+   * the bibliography's entry.  Returns null, or why the document cannot be
+   * stored: 'shape' (formProblem), 'incomplete' (no valid bibId or no MetaID)
+   * or { taken: path } (another file has the same MetaID, or the file name
+   * holds another file).
+   */
+  store(reference = null) {
+    const { doc } = this;
+    if (formProblem(doc)) return 'shape';
+    const bibId = String(doc.meta.bibId || '').trim();
+    if (!isBibId(bibId) || expectedMetaId(doc) === null) return 'incomplete';
+    assignIds(doc);
+    const twin = this.#workspace.db.sortedFiles().find((f) => f.path !== this.path && f.meta.id === doc.meta.id);
+    const target = filePath(doc, reference ? reference.entryFor(bibId) : this.#workspace.db.reference(bibId));
+    if (twin || (target !== this.path && this.#workspace.text(target) !== null)) return { taken: twin ? twin.path : target };
+    this.#review = this.#tracker.review(doc, this.#savedIds(), this.#workspace, this.path);
+    if (reference) reference.save(bibId);   // the bibliography entry first: the file name depends on it
+    this.#workspace.move(this.path, target, this.text());
+    this.path = target;
+    return null;
+  }
+
+  /** Take `next` (of the JSON tab) as the document; its entries are matched by datasetId (IdTracker.adopt). */
+  adopt(next) {
+    this.#tracker.adopt(this.doc, next);
+    this.doc = next;
+    this.#review = null;                            // until the next store reviews the entries
+  }
+
+  /** Settle identity changes of the last review: 'same' or 'different' (IdTracker.choose).  Returns the other files that were changed. */
+  choose(changes, choice) {
+    const touched = new Set();
+    for (const change of changes) {
+      for (const p of this.#tracker.choose(change.entry, choice, this.doc, this.#workspace, this.path)) touched.add(p);
+    }
+    return [...touched];
+  }
+
+  /** Undo every choice, so that references re-pointed for this document go back (its edits are discarded). */
+  undo() {
+    this.#tracker.undoAll(this.doc, this.#workspace, this.path);
+    this.#review = null;
+  }
+
+  #savedIds() {
+    return datasetIdsOf(this.path ? this.#workspace.baseline(this.path) : null);
   }
 }
